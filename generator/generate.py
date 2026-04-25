@@ -126,6 +126,20 @@ def generate_themes() -> list[dict]:
     return entries
 
 
+def parse_tease(raw: str) -> dict:
+    """tease形式の出力を本ツイートとリプライに分割"""
+    parts = re.split(r"【リプライ】", raw, maxsplit=1)
+    main_text = re.sub(r"^【本ツイート】\s*", "", parts[0]).strip()
+    reply_text = parts[1].strip() if len(parts) > 1 else ""
+    return {"main": main_text, "reply": reply_text}
+
+
+def parse_single_tweet(raw: str) -> dict:
+    """straight/tier/mumble形式の出力をパース"""
+    text = re.sub(r"^【ツイート】\s*", "", raw).strip()
+    return {"main": text, "reply": ""}
+
+
 def generate_ranking(theme: str, fmt: str = "tease") -> str:
     """形式指定でランキング/Tier表を生成"""
     prompt_template = FORMAT_PROMPTS.get(fmt, RANKING_TEASE_PROMPT)
@@ -143,7 +157,7 @@ def generate_mumble() -> str:
     return result
 
 
-def cmd_daily():
+def cmd_daily(output_json: str | None = None):
     """1日分を一括生成"""
     print("=== テーマを5つ生成中... ===\n")
     entries = generate_themes()
@@ -152,32 +166,50 @@ def cmd_daily():
         print(f"テーマが{len(entries)}個しか取れませんでした。再実行してください。")
         return
 
-    slots = ["7:30 朝", "12:15 昼", "18:30 夕", "21:30 夜", "23:00 深夜"]
+    slots = ["07:30", "12:15", "18:30", "21:30", "23:00"]
+    slot_labels = ["7:30 朝", "12:15 昼", "18:30 夕", "21:30 夜", "23:00 深夜"]
     fmt_labels = {"tease": "5→1位は↓", "straight": "1→5位", "tier": "Tier表"}
+    tweets = []
 
-    for i, (slot, entry) in enumerate(zip(slots, entries)):
+    for i, (slot, slot_label, entry) in enumerate(zip(slots, slot_labels, entries)):
         theme = entry["theme"]
         fmt = entry["format"]
         label = fmt_labels.get(fmt, fmt)
 
         print(f"\n{'='*60}")
-        print(f"【{slot}】[{label}] {theme}")
+        print(f"【{slot_label}】[{label}] {theme}")
         print('='*60 + "\n")
 
-        result = generate_ranking(theme, fmt)
-        print(result)
+        raw = generate_ranking(theme, fmt)
+        print(raw)
 
-        # 23:00枠はつぶやきも候補として生成
+        if fmt == "tease":
+            parsed = parse_tease(raw)
+        else:
+            parsed = parse_single_tweet(raw)
+
+        tweets.append({
+            "slot": slot,
+            "theme": theme,
+            "format": fmt,
+            "main": parsed["main"],
+            "reply": parsed["reply"],
+        })
+
         if i == 4:
             print(f"\n{'- '*30}")
             print("【代替: INTJのつぶやき】\n")
             mumble = generate_mumble()
             print(mumble)
 
+    if output_json:
+        Path(output_json).write_text(
+            json.dumps(tweets, ensure_ascii=False, indent=2)
+        )
+        print(f"\nJSON出力: {output_json}")
+
     print(f"\n{'='*60}")
     print("生成完了！")
-    print("「1位は↓」形式 → 本ツイート投稿後にリプライで1位を投稿")
-    print("それ以外 → そのまま1ツイートとして投稿")
 
 
 def cmd_single(theme: str, fmt: str):
@@ -205,7 +237,8 @@ def main():
     parser = argparse.ArgumentParser(description="MBTI×恋愛ランキング ツイート生成")
     subparsers = parser.add_subparsers(dest="command")
 
-    subparsers.add_parser("daily", help="1日分（5本）を一括生成")
+    daily_parser = subparsers.add_parser("daily", help="1日分（5本）を一括生成")
+    daily_parser.add_argument("--output-json", help="生成結果をJSONファイルに出力")
     subparsers.add_parser("themes", help="テーマだけ5つ提案")
     subparsers.add_parser("mumble", help="INTJのつぶやき1本")
 
@@ -227,7 +260,7 @@ def main():
 
     match args.command:
         case "daily":
-            cmd_daily()
+            cmd_daily(output_json=args.output_json)
         case "single":
             cmd_single(args.theme, args.format)
         case "mumble":

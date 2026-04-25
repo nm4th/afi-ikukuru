@@ -1,33 +1,10 @@
-name: ツイート自動生成
+name: ツイート生成・投稿
 
 on:
-  # 毎日 22:00 JST（13:00 UTC）に実行 → 翌日分を生成
   schedule:
+    # 毎日 22:00 JST（13:00 UTC）に翌日分を生成
     - cron: '0 13 * * *'
-  # 手動実行も可能
   workflow_dispatch:
-    inputs:
-      command:
-        description: '実行コマンド'
-        required: true
-        default: 'daily'
-        type: choice
-        options:
-          - daily
-          - themes
-          - mumble
-      theme:
-        description: 'single用テーマ（commandがdailyの場合は不要）'
-        required: false
-      format:
-        description: 'single用形式'
-        required: false
-        default: 'tease'
-        type: choice
-        options:
-          - tease
-          - straight
-          - tier
 
 permissions:
   contents: write
@@ -36,14 +13,11 @@ permissions:
 jobs:
   generate:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
       - name: Install dependencies
         run: pip install -r generator/requirements.txt
 
@@ -51,19 +25,13 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         working-directory: generator
-        run: |
-          COMMAND="${{ github.event.inputs.command || 'daily' }}"
+        run: python generate.py daily --output-json ../tweets.json | tee ../output.txt
 
-          if [ "$COMMAND" = "daily" ]; then
-            python generate.py daily > ../output.txt 2>&1
-          elif [ "$COMMAND" = "themes" ]; then
-            python generate.py themes > ../output.txt 2>&1
-          elif [ "$COMMAND" = "mumble" ]; then
-            python generate.py mumble > ../output.txt 2>&1
-          fi
-
-          echo "--- 生成結果 ---"
-          cat ../output.txt
+      - name: Upload tweets JSON
+        uses: actions/upload-artifact@v4
+        with:
+          name: tweets
+          path: tweets.json
 
       - name: Create issue with results
         env:
@@ -71,7 +39,6 @@ jobs:
         run: |
           DATE=$(TZ=Asia/Tokyo date '+%Y-%m-%d')
           BODY=$(cat output.txt)
-
           gh issue create \
             --title "📝 ${DATE} ツイート生成結果" \
             --body "$(cat <<EOF
@@ -83,7 +50,6 @@ jobs:
 
           ---
           ⏰ 投稿スケジュール: 7:30 / 12:15 / 18:30 / 21:30 / 23:00
-          📌 「1位は↓」形式 → 本ツイート投稿後にリプライで1位を投稿
           EOF
           )"
 
@@ -96,3 +62,150 @@ jobs:
             git commit -m "update tweet history $(TZ=Asia/Tokyo date '+%Y-%m-%d')"
             git push
           fi
+
+  # --- 時間差投稿ジョブ（5スロット） ---
+  post-0730:
+    needs: generate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r generator/requirements.txt
+      - uses: actions/download-artifact@v4
+        with:
+          name: tweets
+      - name: Wait until 07:30 JST
+        run: |
+          TARGET=$(TZ=Asia/Tokyo date -d 'tomorrow 07:30' +%s 2>/dev/null || \
+                   TZ=Asia/Tokyo date -j -v+1d -f '%H:%M' '07:30' +%s 2>/dev/null || echo 0)
+          NOW=$(date +%s)
+          WAIT=$((TARGET - NOW))
+          if [ "$WAIT" -gt 0 ] && [ "$WAIT" -lt 43200 ]; then
+            echo "Waiting ${WAIT}s until 07:30 JST..."
+            sleep "$WAIT"
+          fi
+      - name: Post 07:30 tweet
+        env:
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
+        run: python generator/post.py tweets.json --slot 07:30
+
+  post-1215:
+    needs: generate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r generator/requirements.txt
+      - uses: actions/download-artifact@v4
+        with:
+          name: tweets
+      - name: Wait until 12:15 JST
+        run: |
+          TARGET=$(TZ=Asia/Tokyo date -d 'tomorrow 12:15' +%s 2>/dev/null || echo 0)
+          NOW=$(date +%s)
+          WAIT=$((TARGET - NOW))
+          if [ "$WAIT" -gt 0 ] && [ "$WAIT" -lt 43200 ]; then
+            echo "Waiting ${WAIT}s until 12:15 JST..."
+            sleep "$WAIT"
+          fi
+      - name: Post 12:15 tweet
+        env:
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
+        run: python generator/post.py tweets.json --slot 12:15
+
+  post-1830:
+    needs: generate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r generator/requirements.txt
+      - uses: actions/download-artifact@v4
+        with:
+          name: tweets
+      - name: Wait until 18:30 JST
+        run: |
+          TARGET=$(TZ=Asia/Tokyo date -d 'tomorrow 18:30' +%s 2>/dev/null || echo 0)
+          NOW=$(date +%s)
+          WAIT=$((TARGET - NOW))
+          if [ "$WAIT" -gt 0 ] && [ "$WAIT" -lt 43200 ]; then
+            echo "Waiting ${WAIT}s until 18:30 JST..."
+            sleep "$WAIT"
+          fi
+      - name: Post 18:30 tweet
+        env:
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
+        run: python generator/post.py tweets.json --slot 18:30
+
+  post-2130:
+    needs: generate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r generator/requirements.txt
+      - uses: actions/download-artifact@v4
+        with:
+          name: tweets
+      - name: Wait until 21:30 JST
+        run: |
+          TARGET=$(TZ=Asia/Tokyo date -d 'tomorrow 21:30' +%s 2>/dev/null || echo 0)
+          NOW=$(date +%s)
+          WAIT=$((TARGET - NOW))
+          if [ "$WAIT" -gt 0 ] && [ "$WAIT" -lt 43200 ]; then
+            echo "Waiting ${WAIT}s until 21:30 JST..."
+            sleep "$WAIT"
+          fi
+      - name: Post 21:30 tweet
+        env:
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
+        run: python generator/post.py tweets.json --slot 21:30
+
+  post-2300:
+    needs: generate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r generator/requirements.txt
+      - uses: actions/download-artifact@v4
+        with:
+          name: tweets
+      - name: Wait until 23:00 JST
+        run: |
+          TARGET=$(TZ=Asia/Tokyo date -d 'tomorrow 23:00' +%s 2>/dev/null || echo 0)
+          NOW=$(date +%s)
+          WAIT=$((TARGET - NOW))
+          if [ "$WAIT" -gt 0 ] && [ "$WAIT" -lt 43200 ]; then
+            echo "Waiting ${WAIT}s until 23:00 JST..."
+            sleep "$WAIT"
+          fi
+      - name: Post 23:00 tweet
+        env:
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
+        run: python generator/post.py tweets.json --slot 23:00
