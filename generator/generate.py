@@ -3,17 +3,24 @@
 MBTI×恋愛ランキング ツイート自動生成スクリプト
 
 使い方:
-  # 1日分のテーマ提案 → ランキング5本を一括生成
+  # 1日分（5本・形式自動選択）を一括生成
   python generate.py daily
 
-  # テーマ指定でランキング1本生成
-  python generate.py single --theme "付き合ったら一途すぎる男のMBTI"
+  # 形式指定でランキング1本生成
+  python generate.py single --theme "付き合ったら一途すぎる男のMBTI" --format tease
+  python generate.py single --theme "サプライズが得意なタイプトップ5" --format straight
+  python generate.py single --theme "共感力" --format tier
 
-  # INTJのつぶやき（23:00枠用）を1本生成
+  # INTJのつぶやき（23:00枠用）
   python generate.py mumble
 
-  # テーマだけ5つ提案（生成はしない）
+  # テーマだけ5つ提案
   python generate.py themes
+
+形式:
+  tease    = 5位→1位は↓（リプで1位発表）※インプレッション最大化
+  straight = 1位→5位（1ツイート完結）
+  tier     = Tier表 S/A/B/C（全16タイプ分類）
 
 環境変数:
   ANTHROPIC_API_KEY: Claude APIキー
@@ -22,6 +29,7 @@ MBTI×恋愛ランキング ツイート自動生成スクリプト
 import argparse
 import json
 import os
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -30,7 +38,9 @@ import anthropic
 
 from prompts import (
     SYSTEM_PROMPT,
-    RANKING_PROMPT,
+    RANKING_TEASE_PROMPT,
+    RANKING_STRAIGHT_PROMPT,
+    TIER_PROMPT,
     DAILY_THEMES_PROMPT,
     INTJ_MUMBLE_PROMPT,
 )
@@ -38,12 +48,17 @@ from prompts import (
 HISTORY_DIR = Path(__file__).parent.parent / "history"
 MODEL = "claude-sonnet-4-6"
 
+FORMAT_PROMPTS = {
+    "tease": RANKING_TEASE_PROMPT,
+    "straight": RANKING_STRAIGHT_PROMPT,
+    "tier": TIER_PROMPT,
+}
+
 
 def load_history(category: str, limit: int = 30) -> str:
     history_file = HISTORY_DIR / f"{category}.jsonl"
     if not history_file.exists():
         return "(まだ履歴なし)"
-
     lines = history_file.read_text().strip().split("\n")
     recent = lines[-limit:]
     entries = []
@@ -61,7 +76,7 @@ def save_history(category: str, text: str):
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
-def generate(prompt: str, max_tokens: int = 1024) -> str:
+def generate(prompt: str, max_tokens: int = 1500) -> str:
     client = anthropic.Anthropic()
     message = client.messages.create(
         model=MODEL,
@@ -72,36 +87,44 @@ def generate(prompt: str, max_tokens: int = 1024) -> str:
     return message.content[0].text
 
 
-def generate_themes() -> list[str]:
-    """今日のテーマを5つ提案"""
+def generate_themes() -> list[dict]:
+    """テーマと形式のペアを5つ提案"""
     history = load_history("themes")
     prompt = DAILY_THEMES_PROMPT.format(history=history)
     result = generate(prompt)
 
-    themes = []
+    entries = []
     for line in result.strip().split("\n"):
         line = line.strip()
-        if line and line[0].isdigit():
-            theme = line.lstrip("0123456789.、．) ").strip()
-            themes.append(theme)
+        if not line or not line[0].isdigit():
+            continue
 
-    for theme in themes:
-        save_history("themes", theme)
+        fmt = "tease"
+        if "1→5" in line or "1->5" in line:
+            fmt = "straight"
+        elif "Tier" in line or "tier" in line:
+            fmt = "tier"
+        elif "5→1" in line or "5->1" in line or "1位は↓" in line:
+            fmt = "tease"
 
-    return themes
+        theme = re.sub(r"^\d+\.\s*\[.*?\]\s*", "", line).strip()
+        entries.append({"theme": theme, "format": fmt})
+        save_history("themes", f"[{fmt}] {theme}")
+
+    return entries
 
 
-def generate_ranking(theme: str) -> str:
-    """テーマ指定でランキング1本生成"""
+def generate_ranking(theme: str, fmt: str = "tease") -> str:
+    """形式指定でランキング/Tier表を生成"""
+    prompt_template = FORMAT_PROMPTS.get(fmt, RANKING_TEASE_PROMPT)
     history = load_history("rankings")
-    prompt = RANKING_PROMPT.format(theme=theme, history=history)
-    result = generate(prompt, max_tokens=1500)
-    save_history("rankings", f"{theme}: {result[:80]}")
+    prompt = prompt_template.format(theme=theme, history=history)
+    result = generate(prompt, max_tokens=2000)
+    save_history("rankings", f"[{fmt}] {theme}: {result[:80]}")
     return result
 
 
 def generate_mumble() -> str:
-    """INTJのつぶやきを1本生成"""
     history = load_history("mumble")
     result = generate(INTJ_MUMBLE_PROMPT.format(history=history))
     save_history("mumble", result)
@@ -109,57 +132,61 @@ def generate_mumble() -> str:
 
 
 def cmd_daily():
-    """1日分のランキングを一括生成"""
+    """1日分を一括生成"""
     print("=== テーマを5つ生成中... ===\n")
-    themes = generate_themes()
+    entries = generate_themes()
 
-    if len(themes) < 5:
-        print(f"テーマが{len(themes)}個しか取れませんでした。再実行してください。")
+    if len(entries) < 5:
+        print(f"テーマが{len(entries)}個しか取れませんでした。再実行してください。")
         return
 
-    slots = ["7:30 朝", "12:15 昼（バズ狙い）", "18:30 夕", "21:30 夜（バズ狙い）", "23:00 深夜"]
+    slots = ["7:30 朝", "12:15 昼", "18:30 夕", "21:30 夜", "23:00 深夜"]
+    fmt_labels = {"tease": "5→1位は↓", "straight": "1→5位", "tier": "Tier表"}
 
-    for i, (slot, theme) in enumerate(zip(slots, themes)):
-        print(f"\n{'='*50}")
-        print(f"【{slot}】テーマ: {theme}")
-        print('='*50)
+    for i, (slot, entry) in enumerate(zip(slots, entries)):
+        theme = entry["theme"]
+        fmt = entry["format"]
+        label = fmt_labels.get(fmt, fmt)
 
+        print(f"\n{'='*60}")
+        print(f"【{slot}】[{label}] {theme}")
+        print('='*60 + "\n")
+
+        result = generate_ranking(theme, fmt)
+        print(result)
+
+        # 23:00枠はつぶやきも候補として生成
         if i == 4:
-            # 23:00枠はランキングorつぶやきを選択
-            print("\n--- ランキング ---")
-            result = generate_ranking(theme)
-            print(result)
-            print("\n--- または、INTJのつぶやき ---")
+            print(f"\n{'- '*30}")
+            print("【代替: INTJのつぶやき】\n")
             mumble = generate_mumble()
             print(mumble)
-        else:
-            result = generate_ranking(theme)
-            print(result)
 
-    print(f"\n{'='*50}")
-    print("生成完了！各ツイートを予約投稿に設定してください。")
-    print("本ツイートを投稿 → 1位のリプライを投稿 の順番で。")
+    print(f"\n{'='*60}")
+    print("生成完了！")
+    print("「1位は↓」形式 → 本ツイート投稿後にリプライで1位を投稿")
+    print("それ以外 → そのまま1ツイートとして投稿")
 
 
-def cmd_single(theme: str):
-    """テーマ指定でランキング1本"""
-    print(f"テーマ: {theme}\n")
-    result = generate_ranking(theme)
+def cmd_single(theme: str, fmt: str):
+    fmt_labels = {"tease": "5→1位は↓", "straight": "1→5位", "tier": "Tier表"}
+    print(f"[{fmt_labels.get(fmt, fmt)}] {theme}\n")
+    result = generate_ranking(theme, fmt)
     print(result)
 
 
 def cmd_mumble():
-    """INTJのつぶやき1本"""
     result = generate_mumble()
     print(result)
 
 
 def cmd_themes():
-    """テーマだけ5つ提案"""
-    themes = generate_themes()
+    entries = generate_themes()
+    fmt_labels = {"tease": "5→1位は↓", "straight": "1→5位", "tier": "Tier表"}
     print("今日のテーマ候補:\n")
-    for i, theme in enumerate(themes, 1):
-        print(f"  {i}. {theme}")
+    for i, entry in enumerate(entries, 1):
+        label = fmt_labels.get(entry["format"], entry["format"])
+        print(f"  {i}. [{label}] {entry['theme']}")
 
 
 def main():
@@ -168,10 +195,16 @@ def main():
 
     subparsers.add_parser("daily", help="1日分（5本）を一括生成")
     subparsers.add_parser("themes", help="テーマだけ5つ提案")
-    subparsers.add_parser("mumble", help="INTJのつぶやきを1本生成")
+    subparsers.add_parser("mumble", help="INTJのつぶやき1本")
 
-    single_parser = subparsers.add_parser("single", help="テーマ指定でランキング1本")
-    single_parser.add_argument("--theme", required=True, help="ランキングのテーマ")
+    sp = subparsers.add_parser("single", help="テーマ・形式指定で1本生成")
+    sp.add_argument("--theme", required=True, help="テーマ")
+    sp.add_argument(
+        "--format",
+        choices=["tease", "straight", "tier"],
+        default="tease",
+        help="形式: tease(5→1位は↓) / straight(1→5位) / tier(Tier表)",
+    )
 
     args = parser.parse_args()
 
@@ -180,16 +213,17 @@ def main():
         print("  export ANTHROPIC_API_KEY=sk-ant-...")
         sys.exit(1)
 
-    if args.command == "daily":
-        cmd_daily()
-    elif args.command == "single":
-        cmd_single(args.theme)
-    elif args.command == "mumble":
-        cmd_mumble()
-    elif args.command == "themes":
-        cmd_themes()
-    else:
-        parser.print_help()
+    match args.command:
+        case "daily":
+            cmd_daily()
+        case "single":
+            cmd_single(args.theme, args.format)
+        case "mumble":
+            cmd_mumble()
+        case "themes":
+            cmd_themes()
+        case _:
+            parser.print_help()
 
 
 if __name__ == "__main__":
