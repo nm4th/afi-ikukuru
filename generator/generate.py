@@ -54,6 +54,15 @@ FORMAT_PROMPTS = {
     "tier": TIER_PROMPT,
 }
 
+_client: anthropic.Anthropic | None = None
+
+
+def get_client() -> anthropic.Anthropic:
+    global _client
+    if _client is None:
+        _client = anthropic.Anthropic()
+    return _client
+
 
 def load_history(category: str, limit: int = 30) -> str:
     history_file = HISTORY_DIR / f"{category}.jsonl"
@@ -77,14 +86,17 @@ def save_history(category: str, text: str):
 
 
 def generate(prompt: str, max_tokens: int = 1500) -> str:
-    client = anthropic.Anthropic()
+    client = get_client()
     message = client.messages.create(
         model=MODEL,
         max_tokens=max_tokens,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}],
     )
-    return message.content[0].text
+    for block in message.content:
+        if block.type == "text":
+            return block.text
+    return ""
 
 
 def generate_themes() -> list[dict]:
