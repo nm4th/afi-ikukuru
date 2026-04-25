@@ -1,0 +1,98 @@
+name: ツイート自動生成
+
+on:
+  # 毎日 22:00 JST（13:00 UTC）に実行 → 翌日分を生成
+  schedule:
+    - cron: '0 13 * * *'
+  # 手動実行も可能
+  workflow_dispatch:
+    inputs:
+      command:
+        description: '実行コマンド'
+        required: true
+        default: 'daily'
+        type: choice
+        options:
+          - daily
+          - themes
+          - mumble
+      theme:
+        description: 'single用テーマ（commandがdailyの場合は不要）'
+        required: false
+      format:
+        description: 'single用形式'
+        required: false
+        default: 'tease'
+        type: choice
+        options:
+          - tease
+          - straight
+          - tier
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r generator/requirements.txt
+
+      - name: Generate tweets
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        working-directory: generator
+        run: |
+          COMMAND="${{ github.event.inputs.command || 'daily' }}"
+
+          if [ "$COMMAND" = "daily" ]; then
+            python generate.py daily > ../output.txt 2>&1
+          elif [ "$COMMAND" = "themes" ]; then
+            python generate.py themes > ../output.txt 2>&1
+          elif [ "$COMMAND" = "mumble" ]; then
+            python generate.py mumble > ../output.txt 2>&1
+          fi
+
+          echo "--- 生成結果 ---"
+          cat ../output.txt
+
+      - name: Create issue with results
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DATE=$(TZ=Asia/Tokyo date '+%Y-%m-%d')
+          BODY=$(cat output.txt)
+
+          gh issue create \
+            --title "📝 ${DATE} ツイート生成結果" \
+            --body "$(cat <<EOF
+          ## ${DATE} のツイート
+
+          \`\`\`
+          ${BODY}
+          \`\`\`
+
+          ---
+          ⏰ 投稿スケジュール: 7:30 / 12:15 / 18:30 / 21:30 / 23:00
+          📌 「1位は↓」形式 → 本ツイート投稿後にリプライで1位を投稿
+          EOF
+          )"
+
+      - name: Commit history updates
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if [ -d history ] && [ -n "$(git status history --porcelain)" ]; then
+            git add history/
+            git commit -m "update tweet history $(TZ=Asia/Tokyo date '+%Y-%m-%d')"
+            git push
+          fi
