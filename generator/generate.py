@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """
-INTJ×Pappy ツイート自動生成スクリプト
+MBTI×恋愛ランキング ツイート自動生成スクリプト
 
 使い方:
-  # 1日分のツイート（5本）を生成
+  # 1日分のテーマ提案 → ランキング5本を一括生成
   python generate.py daily
 
-  # 奮闘記シリーズ（7話）を生成
-  python generate.py series --theme "初めてのデートで失敗する話"
+  # テーマ指定でランキング1本生成
+  python generate.py single --theme "付き合ったら一途すぎる男のMBTI"
 
-  # 特定カテゴリだけ生成
-  python generate.py single --category aruaru_morning
-  python generate.py single --category aruaru_evening
-  python generate.py single --category weapon
-  python generate.py single --category reflection
+  # INTJのつぶやき（23:00枠用）を1本生成
+  python generate.py mumble
+
+  # テーマだけ5つ提案（生成はしない）
+  python generate.py themes
 
 環境変数:
   ANTHROPIC_API_KEY: Claude APIキー
@@ -30,34 +30,30 @@ import anthropic
 
 from prompts import (
     SYSTEM_PROMPT,
-    ARUARU_MORNING_PROMPT,
-    ARUARU_EVENING_PROMPT,
-    WEAPON_PROMPT,
-    REFLECTION_PROMPT,
-    SERIES_PROMPT,
+    RANKING_PROMPT,
+    DAILY_THEMES_PROMPT,
+    INTJ_MUMBLE_PROMPT,
 )
 
 HISTORY_DIR = Path(__file__).parent.parent / "history"
 MODEL = "claude-sonnet-4-6"
 
 
-def load_history(category: str, limit: int = 20) -> str:
-    """過去の投稿履歴を読み込む"""
+def load_history(category: str, limit: int = 30) -> str:
     history_file = HISTORY_DIR / f"{category}.jsonl"
     if not history_file.exists():
-        return "(まだ投稿履歴なし)"
+        return "(まだ履歴なし)"
 
     lines = history_file.read_text().strip().split("\n")
     recent = lines[-limit:]
     entries = []
     for line in recent:
         data = json.loads(line)
-        entries.append(f"- {data['text'][:80]}...")
+        entries.append(f"- {data['text'][:100]}")
     return "\n".join(entries)
 
 
 def save_history(category: str, text: str):
-    """投稿履歴を保存する"""
     HISTORY_DIR.mkdir(exist_ok=True)
     history_file = HISTORY_DIR / f"{category}.jsonl"
     entry = {"date": datetime.now().isoformat(), "text": text}
@@ -65,98 +61,117 @@ def save_history(category: str, text: str):
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
-def generate(prompt: str) -> str:
-    """Claude APIでツイートを生成する"""
+def generate(prompt: str, max_tokens: int = 1024) -> str:
     client = anthropic.Anthropic()
     message = client.messages.create(
         model=MODEL,
-        max_tokens=1024,
+        max_tokens=max_tokens,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}],
     )
     return message.content[0].text
 
 
-def generate_single(category: str) -> str:
-    """指定カテゴリのツイートを1本生成"""
-    prompts = {
-        "aruaru_morning": ARUARU_MORNING_PROMPT,
-        "aruaru_evening": ARUARU_EVENING_PROMPT,
-        "weapon": WEAPON_PROMPT,
-        "reflection": REFLECTION_PROMPT,
-    }
-    if category not in prompts:
-        print(f"エラー: カテゴリは {list(prompts.keys())} から選んでください")
-        sys.exit(1)
-
-    history = load_history(category)
-    prompt = prompts[category].format(history=history)
+def generate_themes() -> list[str]:
+    """今日のテーマを5つ提案"""
+    history = load_history("themes")
+    prompt = DAILY_THEMES_PROMPT.format(history=history)
     result = generate(prompt)
-    save_history(category, result)
+
+    themes = []
+    for line in result.strip().split("\n"):
+        line = line.strip()
+        if line and line[0].isdigit():
+            theme = line.lstrip("0123456789.、．) ").strip()
+            themes.append(theme)
+
+    for theme in themes:
+        save_history("themes", theme)
+
+    return themes
+
+
+def generate_ranking(theme: str) -> str:
+    """テーマ指定でランキング1本生成"""
+    history = load_history("rankings")
+    prompt = RANKING_PROMPT.format(theme=theme, history=history)
+    result = generate(prompt, max_tokens=1500)
+    save_history("rankings", f"{theme}: {result[:80]}")
     return result
 
 
-def generate_daily() -> dict:
-    """1日分のツイート（5本）を一括生成"""
-    print("=== 1日分のツイートを生成中 ===\n")
-    results = {}
-
-    categories = [
-        ("aruaru_morning", "7:30 朝（偏りあるある）"),
-        ("aruaru_evening", "18:30 夕（偏りあるある・仕事系）"),
-        ("weapon", "21:30 夜①（武器になった話＋誘導）"),
-        ("reflection", "23:00 夜②（気づき・内省）"),
-    ]
-
-    for category, label in categories:
-        print(f"--- {label} ---")
-        result = generate_single(category)
-        results[category] = result
-        print(result)
-        print()
-
-    return results
+def generate_mumble() -> str:
+    """INTJのつぶやきを1本生成"""
+    history = load_history("mumble")
+    result = generate(INTJ_MUMBLE_PROMPT.format(history=history))
+    save_history("mumble", result)
+    return result
 
 
-def generate_series(theme: str) -> str:
-    """奮闘記シリーズ（7話）を生成"""
-    print(f"=== 奮闘記シリーズを生成中（テーマ: {theme}） ===\n")
+def cmd_daily():
+    """1日分のランキングを一括生成"""
+    print("=== テーマを5つ生成中... ===\n")
+    themes = generate_themes()
 
-    history = load_history("series")
-    prompt = SERIES_PROMPT.format(theme=theme, history=history)
-    result = generate(prompt)
-    save_history("series", f"テーマ: {theme} | {result[:100]}")
+    if len(themes) < 5:
+        print(f"テーマが{len(themes)}個しか取れませんでした。再実行してください。")
+        return
 
-    # 各話を個別にも保存
-    HISTORY_DIR.mkdir(exist_ok=True)
-    series_dir = HISTORY_DIR / "series_episodes"
-    series_dir.mkdir(exist_ok=True)
-    date_str = datetime.now().strftime("%Y%m%d")
-    (series_dir / f"{date_str}.txt").write_text(result)
+    slots = ["7:30 朝", "12:15 昼（バズ狙い）", "18:30 夕", "21:30 夜（バズ狙い）", "23:00 深夜"]
 
+    for i, (slot, theme) in enumerate(zip(slots, themes)):
+        print(f"\n{'='*50}")
+        print(f"【{slot}】テーマ: {theme}")
+        print('='*50)
+
+        if i == 4:
+            # 23:00枠はランキングorつぶやきを選択
+            print("\n--- ランキング ---")
+            result = generate_ranking(theme)
+            print(result)
+            print("\n--- または、INTJのつぶやき ---")
+            mumble = generate_mumble()
+            print(mumble)
+        else:
+            result = generate_ranking(theme)
+            print(result)
+
+    print(f"\n{'='*50}")
+    print("生成完了！各ツイートを予約投稿に設定してください。")
+    print("本ツイートを投稿 → 1位のリプライを投稿 の順番で。")
+
+
+def cmd_single(theme: str):
+    """テーマ指定でランキング1本"""
+    print(f"テーマ: {theme}\n")
+    result = generate_ranking(theme)
     print(result)
-    return result
+
+
+def cmd_mumble():
+    """INTJのつぶやき1本"""
+    result = generate_mumble()
+    print(result)
+
+
+def cmd_themes():
+    """テーマだけ5つ提案"""
+    themes = generate_themes()
+    print("今日のテーマ候補:\n")
+    for i, theme in enumerate(themes, 1):
+        print(f"  {i}. {theme}")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="INTJ×Pappy ツイート自動生成")
+    parser = argparse.ArgumentParser(description="MBTI×恋愛ランキング ツイート生成")
     subparsers = parser.add_subparsers(dest="command")
 
-    # daily: 1日分生成
-    subparsers.add_parser("daily", help="1日分のツイート（4本＋奮闘記は別管理）を生成")
+    subparsers.add_parser("daily", help="1日分（5本）を一括生成")
+    subparsers.add_parser("themes", help="テーマだけ5つ提案")
+    subparsers.add_parser("mumble", help="INTJのつぶやきを1本生成")
 
-    # series: 奮闘記生成
-    series_parser = subparsers.add_parser("series", help="奮闘記シリーズ（7話）を生成")
-    series_parser.add_argument("--theme", required=True, help="今週のテーマ")
-
-    # single: 1本だけ生成
-    single_parser = subparsers.add_parser("single", help="指定カテゴリのツイートを1本生成")
-    single_parser.add_argument(
-        "--category",
-        required=True,
-        choices=["aruaru_morning", "aruaru_evening", "weapon", "reflection"],
-        help="カテゴリ",
-    )
+    single_parser = subparsers.add_parser("single", help="テーマ指定でランキング1本")
+    single_parser.add_argument("--theme", required=True, help="ランキングのテーマ")
 
     args = parser.parse_args()
 
@@ -166,17 +181,13 @@ def main():
         sys.exit(1)
 
     if args.command == "daily":
-        results = generate_daily()
-        print("\n=== 昼の奮闘記は別途 series コマンドで週次生成してください ===")
-        print("  python generate.py series --theme '今週のテーマ'")
-
-    elif args.command == "series":
-        generate_series(args.theme)
-
+        cmd_daily()
     elif args.command == "single":
-        result = generate_single(args.category)
-        print(result)
-
+        cmd_single(args.theme)
+    elif args.command == "mumble":
+        cmd_mumble()
+    elif args.command == "themes":
+        cmd_themes()
     else:
         parser.print_help()
 

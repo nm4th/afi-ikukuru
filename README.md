@@ -1,7 +1,7 @@
-# INTJ × Pappy アフィリエイトコンテンツ
+# MBTI × 恋愛ランキング（X Premium インプレッション収益）
 
-「偏りすぎたINTJおじさんの恋愛奮闘記」アカウント運用キット。
-Claude APIでツイートを自動生成し、過去の投稿と被らない内容を毎回作る。
+INTJの分析好きキャラが、MBTI×恋愛をランキング形式で解説するXアカウント。
+「5位→1位は↓」構造でリプライに誘導し、インプレッションを稼ぐ。
 
 ## セットアップ
 
@@ -12,33 +12,31 @@ export ANTHROPIC_API_KEY=sk-ant-...
 
 ## 使い方
 
-### 1日分のツイートを生成（4本）
+### 1日分を一括生成（テーマ提案→ランキング5本）
 ```bash
 python generator/generate.py daily
 ```
-→ 朝・夕・夜①（誘導付き）・夜② の4カテゴリ分を一括生成
 
-### 奮闘記シリーズを週次生成（7話）
+### テーマ指定でランキング1本
 ```bash
-python generator/generate.py series --theme "初めてのデートで失敗する話"
+python generator/generate.py single --theme "付き合ったら一途すぎる男のMBTI"
 ```
-→ 昼枠の連載7話分をまとめて生成
 
-### 特定カテゴリだけ生成
+### テーマだけ5つ提案
 ```bash
-python generator/generate.py single --category aruaru_morning
-python generator/generate.py single --category aruaru_evening
-python generator/generate.py single --category weapon
-python generator/generate.py single --category reflection
+python generator/generate.py themes
+```
+
+### INTJのつぶやき（23:00枠用）
+```bash
+python generator/generate.py mumble
 ```
 
 ## 構成
 
 ```
 content/          アカウント設計・運用ガイド
-tweets/           サンプルツイート集（参考用）
+tweets/           サンプルツイート（参考用）
 generator/        ツイート自動生成スクリプト
-  generate.py     メインスクリプト
-  prompts.py      プロンプト定義
-history/          過去の生成履歴（自動作成・ネタ被り防止用）
+history/          過去の生成履歴（ネタ被り防止）
 ```
