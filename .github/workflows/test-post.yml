@@ -12,6 +12,7 @@ on:
           - tease
           - straight
           - tier
+          - aruaru
           - mumble
       theme:
         description: 'テーマ（mumble以外で必要）'

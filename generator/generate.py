@@ -41,6 +41,7 @@ from prompts import (
     RANKING_TEASE_PROMPT,
     RANKING_STRAIGHT_PROMPT,
     TIER_PROMPT,
+    ARUARU_PROMPT,
     DAILY_THEMES_PROMPT,
     INTJ_MUMBLE_PROMPT,
 )
@@ -52,6 +53,7 @@ FORMAT_PROMPTS = {
     "tease": RANKING_TEASE_PROMPT,
     "straight": RANKING_STRAIGHT_PROMPT,
     "tier": TIER_PROMPT,
+    "aruaru": ARUARU_PROMPT,
 }
 
 _client: anthropic.Anthropic | None = None
@@ -112,7 +114,9 @@ def generate_themes() -> list[dict]:
             continue
 
         fmt = "tease"
-        if "1→5" in line or "1->5" in line:
+        if "あるある" in line:
+            fmt = "aruaru"
+        elif "1→5" in line or "1->5" in line:
             fmt = "straight"
         elif "Tier" in line or "tier" in line:
             fmt = "tier"
@@ -168,7 +172,7 @@ def cmd_daily(output_json: str | None = None):
 
     slots = ["07:30", "12:15", "18:30", "21:30", "23:00"]
     slot_labels = ["7:30 朝", "12:15 昼", "18:30 夕", "21:30 夜", "23:00 深夜"]
-    fmt_labels = {"tease": "5→1位は↓", "straight": "1→5位", "tier": "Tier表"}
+    fmt_labels = {"tease": "5→1位は↓", "straight": "1→5位", "tier": "Tier表", "aruaru": "あるある"}
     tweets = []
 
     for i, (slot, slot_label, entry) in enumerate(zip(slots, slot_labels, entries)):
@@ -213,7 +217,7 @@ def cmd_daily(output_json: str | None = None):
 
 
 def cmd_single(theme: str, fmt: str):
-    fmt_labels = {"tease": "5→1位は↓", "straight": "1→5位", "tier": "Tier表"}
+    fmt_labels = {"tease": "5→1位は↓", "straight": "1→5位", "tier": "Tier表", "aruaru": "あるある"}
     print(f"[{fmt_labels.get(fmt, fmt)}] {theme}\n")
     result = generate_ranking(theme, fmt)
     print(result)
@@ -226,7 +230,7 @@ def cmd_mumble():
 
 def cmd_themes():
     entries = generate_themes()
-    fmt_labels = {"tease": "5→1位は↓", "straight": "1→5位", "tier": "Tier表"}
+    fmt_labels = {"tease": "5→1位は↓", "straight": "1→5位", "tier": "Tier表", "aruaru": "あるある"}
     print("今日のテーマ候補:\n")
     for i, entry in enumerate(entries, 1):
         label = fmt_labels.get(entry["format"], entry["format"])
@@ -246,9 +250,9 @@ def main():
     sp.add_argument("--theme", required=True, help="テーマ")
     sp.add_argument(
         "--format",
-        choices=["tease", "straight", "tier"],
+        choices=["tease", "straight", "tier", "aruaru"],
         default="tease",
-        help="形式: tease(5→1位は↓) / straight(1→5位) / tier(Tier表)",
+        help="形式: tease(5→1位は↓) / straight(1→5位) / tier(Tier表) / aruaru(あるある)",
     )
 
     args = parser.parse_args()
