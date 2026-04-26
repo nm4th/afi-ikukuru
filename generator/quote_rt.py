@@ -26,14 +26,14 @@ MODEL = "claude-sonnet-4-6"
 HISTORY_FILE = Path(__file__).parent.parent / "history" / "quoted.jsonl"
 
 ABEMA_QUERIES = [
-    "ABEMA 恋愛",
+    "恋愛病院 ABEMA",
+    "今日好きになりました",
+    "今日好き",
+    "乗り換え恋愛",
+    "ラブパワーキングダム",
     "シャッフルアイランド",
     "オオカミくんには騙されない",
-    "今日好きになりました",
-    "ラブトランジット",
-    "HEART SIGNAL",
-    "あざとくて何が悪いの",
-    "恋愛ドラマな恋がしたい",
+    "ABEMA 恋愛",
 ]
 
 ANALYSIS_PROMPT = """\
