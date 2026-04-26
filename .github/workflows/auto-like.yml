@@ -1,0 +1,53 @@
+name: フォロワーいいね
+
+on:
+  schedule:
+    - cron: '15 * * * *'  # 毎時15分に実行
+  workflow_dispatch:
+    inputs:
+      count:
+        description: 'いいね数'
+        required: false
+        default: '6'
+      dry_run:
+        description: 'dry-run（いいねせず確認だけ）'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+permissions:
+  contents: write
+
+jobs:
+  like:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r generator/requirements.txt
+
+      - name: Like followers tweets
+        env:
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
+        run: |
+          COUNT="${{ github.event.inputs.count || '6' }}"
+          ARGS="--count $COUNT"
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          python generator/auto_like.py $ARGS
+
+      - name: Commit history
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A history/
+          git diff --cached --quiet || (git commit -m "update like history $(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M')" && git push)

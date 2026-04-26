@@ -1,0 +1,59 @@
+name: ABEMA恋愛番組 引用RT分析
+
+on:
+  schedule:
+    # 毎日 20:00 JST（11:00 UTC）- ゴールデンタイム前に投稿
+    - cron: '0 11 * * *'
+  workflow_dispatch:
+    inputs:
+      query:
+        description: '番組名（空欄なら全番組から検索）'
+        required: false
+      dry_run:
+        description: 'dry-run（投稿せず確認だけ）'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+permissions:
+  contents: write
+
+jobs:
+  quote-rt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r generator/requirements.txt
+
+      - name: Run quote RT
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
+        run: |
+          ARGS=""
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          if [ -n "${{ github.event.inputs.query }}" ]; then
+            ARGS="$ARGS --query '${{ github.event.inputs.query }}'"
+          fi
+          eval python generator/quote_rt.py $ARGS
+
+      - name: Commit history
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if [ -f history/quoted.jsonl ] && [ -n "$(git status history/quoted.jsonl --porcelain 2>/dev/null)" ]; then
+            git add history/quoted.jsonl
+            git commit -m "update quoted history $(TZ=Asia/Tokyo date '+%Y-%m-%d')"
+            git push
+          fi
