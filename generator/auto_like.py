@@ -24,6 +24,8 @@ import tweepy
 HISTORY_FILE = Path(__file__).parent.parent / "history" / "liked.jsonl"
 FOLLOWERS_CACHE = Path(__file__).parent.parent / "history" / "followers.json"
 
+TARGET_ACCOUNT = "lovembti_analyz"
+
 MAX_HISTORY = 500
 
 
@@ -36,7 +38,7 @@ def get_client() -> tweepy.Client:
     )
 
 
-def load_liked_ids() -> set[str]:
+def load_liked_tweet_ids() -> set[str]:
     if not HISTORY_FILE.exists():
         return set()
     ids = set()
@@ -57,63 +59,59 @@ def save_liked(tweet_id: str, user_name: str):
     with open(HISTORY_FILE, "a") as f:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
-    trim_history()
-
-
-def trim_history():
-    if not HISTORY_FILE.exists():
-        return
     lines = HISTORY_FILE.read_text().strip().split("\n")
     if len(lines) > MAX_HISTORY:
         HISTORY_FILE.write_text("\n".join(lines[-MAX_HISTORY:]) + "\n")
 
 
-def get_followers(client: tweepy.Client, user_id: str) -> list[dict]:
-    cache_valid = False
+def resolve_user_id(client: tweepy.Client, username: str) -> str:
+    response = client.get_user(username=username)
+    return str(response.data.id)
+
+
+def get_followers(client: tweepy.Client, target_user_id: str) -> list[dict]:
     if FOLLOWERS_CACHE.exists():
         data = json.loads(FOLLOWERS_CACHE.read_text())
         age_hours = (datetime.now() - datetime.fromisoformat(data["updated"])).total_seconds() / 3600
         if age_hours < 24:
-            cache_valid = True
             print(f"  フォロワーキャッシュ使用（{len(data['followers'])}人、{age_hours:.0f}時間前）")
             return data["followers"]
 
-    if not cache_valid:
-        print("  フォロワーリスト取得中...")
-        followers = []
-        try:
-            response = client.get_users_followers(
-                user_id,
-                max_results=200,
-                user_fields=["username"],
-            )
-            if response.data:
-                for user in response.data:
-                    followers.append({
-                        "id": str(user.id),
-                        "username": user.username,
-                    })
-        except tweepy.TooManyRequests:
-            print("  レート制限に達しました")
-            if FOLLOWERS_CACHE.exists():
-                return json.loads(FOLLOWERS_CACHE.read_text())["followers"]
-            return []
+    print(f"  @{TARGET_ACCOUNT} のフォロワーリスト取得中...")
+    followers = []
+    try:
+        response = client.get_users_followers(
+            target_user_id,
+            max_results=200,
+            user_fields=["username"],
+        )
+        if response.data:
+            for user in response.data:
+                followers.append({
+                    "id": str(user.id),
+                    "username": user.username,
+                })
+    except tweepy.TooManyRequests:
+        print("  レート制限に達しました")
+        if FOLLOWERS_CACHE.exists():
+            return json.loads(FOLLOWERS_CACHE.read_text())["followers"]
+        return []
 
-        FOLLOWERS_CACHE.parent.mkdir(exist_ok=True)
-        FOLLOWERS_CACHE.write_text(json.dumps({
-            "updated": datetime.now().isoformat(),
-            "followers": followers,
-        }, ensure_ascii=False, indent=2))
-        print(f"  {len(followers)}人のフォロワーを取得")
-        return followers
+    FOLLOWERS_CACHE.parent.mkdir(exist_ok=True)
+    FOLLOWERS_CACHE.write_text(json.dumps({
+        "updated": datetime.now().isoformat(),
+        "followers": followers,
+    }, ensure_ascii=False, indent=2))
+    print(f"  {len(followers)}人のフォロワーを取得")
+    return followers
 
 
 def like_followers_tweets(
     client: tweepy.Client,
-    user_id: str,
+    my_user_id: str,
     followers: list[dict],
     count: int,
-    liked_ids: set[str],
+    liked_tweet_ids: set[str],
     dry_run: bool = False,
 ) -> int:
     random.shuffle(followers)
@@ -127,7 +125,6 @@ def like_followers_tweets(
             response = client.get_users_tweets(
                 follower["id"],
                 max_results=5,
-                tweet_fields=["public_metrics"],
                 exclude=["retweets", "replies"],
             )
         except (tweepy.Forbidden, tweepy.TooManyRequests):
@@ -136,28 +133,29 @@ def like_followers_tweets(
         if not response.data:
             continue
 
-        for tweet in response.data:
-            tweet_id = str(tweet.id)
-            if tweet_id in liked_ids:
+        tweet = response.data[0]
+        tweet_id = str(tweet.id)
+
+        if tweet_id in liked_tweet_ids:
+            continue
+
+        if dry_run:
+            print(f"  [dry-run] ❤️ @{follower['username']}: {tweet.text[:80]}...")
+        else:
+            try:
+                client.like(my_user_id, tweet.id)
+                print(f"  ❤️ @{follower['username']}: {tweet.text[:80]}...")
+                save_liked(tweet_id, follower["username"])
+            except tweepy.Forbidden:
                 continue
+            except tweepy.TooManyRequests:
+                print("  レート制限に達しました。終了します。")
+                return liked
 
-            if dry_run:
-                print(f"  [dry-run] ❤️ @{follower['username']}: {tweet.text[:80]}...")
-            else:
-                try:
-                    client.like(user_id, tweet.id)
-                    print(f"  ❤️ @{follower['username']}: {tweet.text[:80]}...")
-                    save_liked(tweet_id, follower["username"])
-                except tweepy.Forbidden:
-                    continue
-                except tweepy.TooManyRequests:
-                    print("  レート制限に達しました。終了します。")
-                    return liked
-
-            liked_ids.add(tweet_id)
-            liked += 1
-            time.sleep(2)
-            break
+        liked_tweet_ids.add(tweet_id)
+        liked += 1
+        if liked < count:
+            time.sleep(20)
 
     return liked
 
@@ -178,18 +176,22 @@ def main():
     print("=== フォロワーいいね ===\n")
 
     me = client.get_me()
-    user_id = str(me.data.id)
-    print(f"  アカウント: @{me.data.username}")
+    my_user_id = str(me.data.id)
+    print(f"  操作アカウント: @{me.data.username}")
 
-    followers = get_followers(client, user_id)
+    target_user_id = resolve_user_id(client, TARGET_ACCOUNT)
+    print(f"  対象アカウント: @{TARGET_ACCOUNT}")
+
+    followers = get_followers(client, target_user_id)
     if not followers:
         print("  フォロワーがいません")
         return
 
-    liked_ids = load_liked_ids()
+    liked_tweet_ids = load_liked_tweet_ids()
+    print(f"  いいね済みツイート: {len(liked_tweet_ids)}件\n")
 
     liked = like_followers_tweets(
-        client, user_id, followers, args.count, liked_ids, args.dry_run,
+        client, my_user_id, followers, args.count, liked_tweet_ids, args.dry_run,
     )
 
     print(f"\n  {liked}件いいねしました{'（dry-run）' if args.dry_run else ''}")
