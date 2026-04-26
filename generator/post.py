@@ -42,14 +42,9 @@ def post_tweet(client: tweepy.Client, text: str, reply_to: str | None = None) ->
     if reply_to:
         kwargs["in_reply_to_tweet_id"] = reply_to
 
-    try:
-        response = client.create_tweet(**kwargs)
-        tweet_id = response.data["id"]
-        return tweet_id
-    except tweepy.Forbidden as e:
-        print(f"  403エラー詳細: {e.response.text}")
-        print(f"  レスポンスヘッダ: {dict(e.response.headers)}")
-        raise
+    response = client.create_tweet(**kwargs)
+    tweet_id = response.data["id"]
+    return tweet_id
 
 
 def post_from_json(json_path: str, slot_filter: str | None = None):
