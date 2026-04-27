@@ -12,6 +12,7 @@ on:
           - tease
           - straight
           - tier
+          - compat
           - mumble
       theme:
         description: 'テーマ（mumble以外で必要）'
@@ -51,13 +52,13 @@ jobs:
           "
           else
             python -c "
-          from generate import generate_ranking, parse_tease, parse_single_tweet
+          from generate import generate_ranking, parse_tease, parse_single_tweet, TEASE_LIKE_FORMATS
           import json
           fmt = '$FORMAT'
           theme = '''$THEME'''
           raw = generate_ranking(theme, fmt)
           print(raw)
-          parsed = parse_tease(raw) if fmt == 'tease' else parse_single_tweet(raw)
+          parsed = parse_tease(raw) if fmt in TEASE_LIKE_FORMATS else parse_single_tweet(raw)
           tweet = [{'slot': 'test', 'theme': theme, 'format': fmt, 'main': parsed['main'], 'reply': parsed['reply']}]
           open('../tweets.json', 'w').write(json.dumps(tweet, ensure_ascii=False, indent=2))
           "
