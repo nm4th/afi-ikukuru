@@ -65,7 +65,7 @@ def save_liked(tweet_id: str, user_name: str):
 
 
 def resolve_user_id(client: tweepy.Client, username: str) -> str:
-    response = client.get_user(username=username)
+    response = client.get_user(username=username, user_auth=True)
     return str(response.data.id)
 
 
@@ -84,6 +84,7 @@ def get_followers(client: tweepy.Client, target_user_id: str) -> list[dict]:
             target_user_id,
             max_results=200,
             user_fields=["username"],
+            user_auth=True,
         )
         if response.data:
             for user in response.data:
@@ -125,6 +126,7 @@ def like_followers_tweets(
                 follower["id"],
                 max_results=5,
                 exclude=["retweets", "replies"],
+                user_auth=True,
             )
         except (tweepy.Forbidden, tweepy.TooManyRequests):
             continue
