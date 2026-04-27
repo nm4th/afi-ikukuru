@@ -108,7 +108,6 @@ def get_followers(client: tweepy.Client, target_user_id: str) -> list[dict]:
 
 def like_followers_tweets(
     client: tweepy.Client,
-    my_user_id: str,
     followers: list[dict],
     count: int,
     liked_tweet_ids: set[str],
@@ -143,7 +142,7 @@ def like_followers_tweets(
             print(f"  [dry-run] ❤️ @{follower['username']}: {tweet.text[:80]}...")
         else:
             try:
-                client.like(my_user_id, tweet.id)
+                client.like(tweet.id)
                 print(f"  ❤️ @{follower['username']}: {tweet.text[:80]}...")
                 save_liked(tweet_id, follower["username"])
             except tweepy.Forbidden:
@@ -176,7 +175,6 @@ def main():
     print("=== フォロワーいいね ===\n")
 
     me = client.get_me()
-    my_user_id = str(me.data.id)
     print(f"  操作アカウント: @{me.data.username}")
 
     target_user_id = resolve_user_id(client, TARGET_ACCOUNT)
@@ -191,7 +189,7 @@ def main():
     print(f"  いいね済みツイート: {len(liked_tweet_ids)}件\n")
 
     liked = like_followers_tweets(
-        client, my_user_id, followers, args.count, liked_tweet_ids, args.dry_run,
+        client, followers, args.count, liked_tweet_ids, args.dry_run,
     )
 
     print(f"\n  {liked}件いいねしました{'（dry-run）' if args.dry_run else ''}")

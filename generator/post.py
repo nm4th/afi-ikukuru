@@ -38,13 +38,15 @@ def get_client() -> tweepy.Client:
 
 def post_tweet(client: tweepy.Client, text: str, reply_to: str | None = None) -> str:
     """ツイートを投稿し、ツイートIDを返す"""
-    kwargs = {"text": text}
+    kwargs: dict = {"text": text}
     if reply_to:
-        kwargs["in_reply_to_tweet_id"] = reply_to
+        kwargs["in_reply_to_tweet_id"] = str(reply_to)
+        print(f"  → in_reply_to_tweet_id={kwargs['in_reply_to_tweet_id']}")
 
     response = client.create_tweet(**kwargs)
-    tweet_id = response.data["id"]
-    return tweet_id
+    if response.data is None:
+        raise RuntimeError(f"create_tweet returned no data; errors={response.errors}")
+    return str(response.data["id"])
 
 
 def post_from_json(json_path: str, slot_filter: str | None = None):
