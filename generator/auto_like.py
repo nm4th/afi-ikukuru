@@ -97,6 +97,11 @@ def get_followers(client: tweepy.Client, target_user_id: str) -> list[dict]:
         if FOLLOWERS_CACHE.exists():
             return json.loads(FOLLOWERS_CACHE.read_text())["followers"]
         return []
+    except (tweepy.Unauthorized, tweepy.Forbidden) as e:
+        print(f"  フォロワー取得が拒否されました（pay-per-use 未契約 or billing 未設定の可能性）: {e}")
+        if FOLLOWERS_CACHE.exists():
+            return json.loads(FOLLOWERS_CACHE.read_text())["followers"]
+        return []
 
     FOLLOWERS_CACHE.parent.mkdir(exist_ok=True)
     FOLLOWERS_CACHE.write_text(json.dumps({
@@ -130,6 +135,9 @@ def like_followers_tweets(
             )
         except (tweepy.Forbidden, tweepy.TooManyRequests):
             continue
+        except tweepy.Unauthorized as e:
+            print(f"  ツイート取得が拒否されました（billing 未設定の可能性）: {e}")
+            return liked
 
         if not response.data:
             continue
@@ -179,7 +187,12 @@ def main():
     me = client.get_me()
     print(f"  操作アカウント: @{me.data.username}")
 
-    target_user_id = resolve_user_id(client, TARGET_ACCOUNT)
+    try:
+        target_user_id = resolve_user_id(client, TARGET_ACCOUNT)
+    except (tweepy.Unauthorized, tweepy.Forbidden) as e:
+        print(f"  対象アカウントの解決が拒否されました（pay-per-use billing 未設定の可能性）: {e}")
+        print("  Developer Portal で従量課金を有効化し、上限キャップを設定してください。")
+        return
     print(f"  対象アカウント: @{TARGET_ACCOUNT}")
 
     followers = get_followers(client, target_user_id)
