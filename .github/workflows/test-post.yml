@@ -13,6 +13,9 @@ on:
           - straight
           - tier
           - compat
+          - full16
+          - contrast
+          - metaphor
           - mumble
       theme:
         description: 'テーマ（mumble以外で必要）'

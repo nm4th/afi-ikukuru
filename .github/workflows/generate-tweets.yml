@@ -6,6 +6,8 @@ on:
     - cron: '30 22 * * *'  # 07:30 JST - 投稿
     - cron: '15 3 * * *'   # 12:15 JST - 投稿
     - cron: '30 9 * * *'   # 18:30 JST - 投稿
+    - cron: '30 10 * * *'  # 19:30 JST - 投稿
+    - cron: '30 11 * * *'  # 20:30 JST - 投稿
     - cron: '30 12 * * *'  # 21:30 JST - 投稿
     - cron: '0 14 * * *'   # 23:00 JST - 投稿
   workflow_dispatch:
@@ -58,7 +60,7 @@ jobs:
           \`\`\`
 
           ---
-          ⏰ 投稿スケジュール: 7:30 / 12:15 / 18:30 / 21:30 / 23:00
+          ⏰ 投稿スケジュール: 7:30 / 12:15 / 18:30 / 19:30 / 20:30 / 21:30 / 23:00
           EOF
           )"
 
@@ -67,6 +69,8 @@ jobs:
       github.event.schedule == '30 22 * * *' ||
       github.event.schedule == '15 3 * * *'  ||
       github.event.schedule == '30 9 * * *'  ||
+      github.event.schedule == '30 10 * * *' ||
+      github.event.schedule == '30 11 * * *' ||
       github.event.schedule == '30 12 * * *' ||
       github.event.schedule == '0 14 * * *'
     runs-on: ubuntu-latest
@@ -89,6 +93,8 @@ jobs:
             '30 22 * * *') SLOT="07:30" ;;
             '15 3 * * *')  SLOT="12:15" ;;
             '30 9 * * *')  SLOT="18:30" ;;
+            '30 10 * * *') SLOT="19:30" ;;
+            '30 11 * * *') SLOT="20:30" ;;
             '30 12 * * *') SLOT="21:30" ;;
             '0 14 * * *')  SLOT="23:00" ;;
             *) echo "Unknown schedule: $SCHEDULE"; exit 1 ;;

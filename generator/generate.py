@@ -3,26 +3,32 @@
 MBTI×恋愛ランキング ツイート自動生成スクリプト
 
 使い方:
-  # 1日分（5本・形式自動選択）を一括生成
+  # 1日分（7本・形式自動選択）を一括生成
   python generate.py daily
 
-  # 形式指定でランキング1本生成
+  # 形式指定で1本生成
   python generate.py single --theme "付き合ったら一途すぎる男のMBTI" --format tease
   python generate.py single --theme "サプライズが得意なタイプトップ5" --format straight
   python generate.py single --theme "共感力" --format tier
   python generate.py single --theme "INTJと相性がいいタイプ" --format compat
+  python generate.py single --theme "LINE返信パターン全16タイプ" --format full16
+  python generate.py single --theme "INTJが冷たいと言われる本当の理由" --format contrast
+  python generate.py single --theme "16タイプを動物に例える" --format metaphor
 
   # INTJのつぶやき（23:00枠用）
   python generate.py mumble
 
-  # テーマだけ5つ提案
+  # テーマだけ7つ提案
   python generate.py themes
 
 形式:
   tease    = 5位→1位は↓（リプで1位発表）※インプレッション最大化
   straight = 1位→5位（1ツイート完結）
   tier     = Tier表 S/A/B/C（全16タイプ分類）
-  compat   = 相性ランキング（XXXX×YYYY のペア／焦点型に対する相性、tease構造）
+  compat   = 相性ランキング（ペア or 焦点型、tease構造）
+  full16   = 全16タイプ網羅（本ツイ8 + リプ8）— 自分のタイプ探し導線
+  contrast = 対比型「誤解 vs 本当の理由」（焦点型1タイプ、1ツイ完結）
+  metaphor = 比喩型「16タイプを○○に例える」（本ツイ8 + リプ8）
 
 環境変数:
   ANTHROPIC_API_KEY: Claude APIキー
@@ -43,6 +49,9 @@ from prompts import (
     RANKING_TEASE_PROMPT,
     RANKING_STRAIGHT_PROMPT,
     RANKING_COMPAT_PROMPT,
+    RANKING_FULL16_PROMPT,
+    RANKING_CONTRAST_PROMPT,
+    RANKING_METAPHOR_PROMPT,
     TIER_PROMPT,
     DAILY_THEMES_PROMPT,
     INTJ_MUMBLE_PROMPT,
@@ -56,10 +65,23 @@ FORMAT_PROMPTS = {
     "straight": RANKING_STRAIGHT_PROMPT,
     "tier": TIER_PROMPT,
     "compat": RANKING_COMPAT_PROMPT,
+    "full16": RANKING_FULL16_PROMPT,
+    "contrast": RANKING_CONTRAST_PROMPT,
+    "metaphor": RANKING_METAPHOR_PROMPT,
 }
 
 # tease構造（本ツイート + リプライ）で出力するフォーマット
-TEASE_LIKE_FORMATS = {"tease", "compat"}
+TEASE_LIKE_FORMATS = {"tease", "compat", "full16", "metaphor"}
+
+FORMAT_LABELS = {
+    "tease": "5→1位は↓",
+    "straight": "1→5位",
+    "tier": "Tier表",
+    "compat": "相性5→1位は↓",
+    "full16": "全16タイプ網羅",
+    "contrast": "対比型",
+    "metaphor": "比喩型",
+}
 
 _client: anthropic.Anthropic | None = None
 
@@ -106,8 +128,27 @@ def generate(prompt: str, max_tokens: int = 1500) -> str:
     return ""
 
 
+def detect_format(line: str) -> str:
+    """テーマ行のラベルから形式を推定"""
+    if "全16タイプ網羅" in line or "網羅" in line:
+        return "full16"
+    if "比喩" in line:
+        return "metaphor"
+    if "対比" in line:
+        return "contrast"
+    if "相性" in line:
+        return "compat"
+    if "Tier" in line or "tier" in line:
+        return "tier"
+    if "1→5" in line or "1->5" in line:
+        return "straight"
+    if "5→1" in line or "5->1" in line or "1位は↓" in line:
+        return "tease"
+    return "tease"
+
+
 def generate_themes() -> list[dict]:
-    """テーマと形式のペアを5つ提案"""
+    """テーマと形式のペアを7つ提案"""
     history = load_history("themes")
     prompt = DAILY_THEMES_PROMPT.format(history=history)
     result = generate(prompt)
@@ -118,16 +159,7 @@ def generate_themes() -> list[dict]:
         if not line or not line[0].isdigit():
             continue
 
-        fmt = "tease"
-        if "相性" in line:
-            fmt = "compat"
-        elif "1→5" in line or "1->5" in line:
-            fmt = "straight"
-        elif "Tier" in line or "tier" in line:
-            fmt = "tier"
-        elif "5→1" in line or "5->1" in line or "1位は↓" in line:
-            fmt = "tease"
-
+        fmt = detect_format(line)
         theme = re.sub(r"^\d+\.\s*\[.*?\]\s*", "", line).strip()
         entries.append({"theme": theme, "format": fmt})
         save_history("themes", f"[{fmt}] {theme}")
@@ -166,24 +198,33 @@ def generate_mumble() -> str:
     return result
 
 
+DAILY_SLOTS = [
+    ("07:30", "7:30 朝"),
+    ("12:15", "12:15 昼"),
+    ("18:30", "18:30 夕"),
+    ("19:30", "19:30 夜1"),
+    ("20:30", "20:30 夜2"),
+    ("21:30", "21:30 夜3"),
+    ("23:00", "23:00 深夜"),
+]
+
+
 def cmd_daily(output_json: str | None = None):
     """1日分を一括生成"""
-    print("=== テーマを5つ生成中... ===\n")
+    n_slots = len(DAILY_SLOTS)
+    print(f"=== テーマを{n_slots}つ生成中... ===\n")
     entries = generate_themes()
 
-    if len(entries) < 5:
-        print(f"テーマが{len(entries)}個しか取れませんでした。再実行してください。")
+    if len(entries) < n_slots:
+        print(f"テーマが{len(entries)}個しか取れませんでした（{n_slots}個必要）。再実行してください。")
         return
 
-    slots = ["07:30", "12:15", "18:30", "21:30", "23:00"]
-    slot_labels = ["7:30 朝", "12:15 昼", "18:30 夕", "21:30 夜", "23:00 深夜"]
-    fmt_labels = {"tease": "5→1位は↓", "straight": "1→5位", "tier": "Tier表", "compat": "相性5→1位は↓"}
     tweets = []
 
-    for i, (slot, slot_label, entry) in enumerate(zip(slots, slot_labels, entries)):
+    for i, ((slot, slot_label), entry) in enumerate(zip(DAILY_SLOTS, entries)):
         theme = entry["theme"]
         fmt = entry["format"]
-        label = fmt_labels.get(fmt, fmt)
+        label = FORMAT_LABELS.get(fmt, fmt)
 
         print(f"\n{'='*60}")
         print(f"【{slot_label}】[{label}] {theme}")
@@ -205,7 +246,7 @@ def cmd_daily(output_json: str | None = None):
             "reply": parsed["reply"],
         })
 
-        if i == 4:
+        if i == n_slots - 1:
             print(f"\n{'- '*30}")
             print("【代替: INTJのつぶやき】\n")
             mumble = generate_mumble()
@@ -222,8 +263,7 @@ def cmd_daily(output_json: str | None = None):
 
 
 def cmd_single(theme: str, fmt: str):
-    fmt_labels = {"tease": "5→1位は↓", "straight": "1→5位", "tier": "Tier表", "compat": "相性5→1位は↓"}
-    print(f"[{fmt_labels.get(fmt, fmt)}] {theme}\n")
+    print(f"[{FORMAT_LABELS.get(fmt, fmt)}] {theme}\n")
     result = generate_ranking(theme, fmt)
     print(result)
 
@@ -235,10 +275,9 @@ def cmd_mumble():
 
 def cmd_themes():
     entries = generate_themes()
-    fmt_labels = {"tease": "5→1位は↓", "straight": "1→5位", "tier": "Tier表", "compat": "相性5→1位は↓"}
     print("今日のテーマ候補:\n")
     for i, entry in enumerate(entries, 1):
-        label = fmt_labels.get(entry["format"], entry["format"])
+        label = FORMAT_LABELS.get(entry["format"], entry["format"])
         print(f"  {i}. [{label}] {entry['theme']}")
 
 
@@ -246,18 +285,18 @@ def main():
     parser = argparse.ArgumentParser(description="MBTI×恋愛ランキング ツイート生成")
     subparsers = parser.add_subparsers(dest="command")
 
-    daily_parser = subparsers.add_parser("daily", help="1日分（5本）を一括生成")
+    daily_parser = subparsers.add_parser("daily", help="1日分（7本）を一括生成")
     daily_parser.add_argument("--output-json", help="生成結果をJSONファイルに出力")
-    subparsers.add_parser("themes", help="テーマだけ5つ提案")
+    subparsers.add_parser("themes", help="テーマだけ7つ提案")
     subparsers.add_parser("mumble", help="INTJのつぶやき1本")
 
     sp = subparsers.add_parser("single", help="テーマ・形式指定で1本生成")
     sp.add_argument("--theme", required=True, help="テーマ")
     sp.add_argument(
         "--format",
-        choices=["tease", "straight", "tier", "compat"],
+        choices=list(FORMAT_PROMPTS.keys()),
         default="tease",
-        help="形式: tease(5→1位は↓) / straight(1→5位) / tier(Tier表) / compat(相性5→1位は↓)",
+        help="形式: tease / straight / tier / compat / full16 / contrast / metaphor",
     )
 
     args = parser.parse_args()
