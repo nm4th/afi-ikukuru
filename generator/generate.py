@@ -3,7 +3,7 @@
 MBTI×恋愛ランキング ツイート自動生成スクリプト
 
 使い方:
-  # 1日分（7本・形式自動選択）を一括生成
+  # 1日分（10本・形式自動選択）を一括生成
   python generate.py daily
 
   # 形式指定で1本生成
@@ -18,7 +18,7 @@ MBTI×恋愛ランキング ツイート自動生成スクリプト
   # INTJのつぶやき（23:00枠用）
   python generate.py mumble
 
-  # テーマだけ7つ提案
+  # テーマだけ10個提案
   python generate.py themes
 
 形式:
@@ -148,7 +148,7 @@ def detect_format(line: str) -> str:
 
 
 def generate_themes() -> list[dict]:
-    """テーマと形式のペアを7つ提案"""
+    """テーマと形式のペアを10個提案"""
     history = load_history("themes")
     prompt = DAILY_THEMES_PROMPT.format(history=history)
     result = generate(prompt)
@@ -200,11 +200,14 @@ def generate_mumble() -> str:
 
 DAILY_SLOTS = [
     ("07:30", "7:30 朝"),
+    ("09:00", "9:00 通勤後"),
     ("12:15", "12:15 昼"),
+    ("15:00", "15:00 午後"),
     ("18:30", "18:30 夕"),
     ("19:30", "19:30 夜1"),
     ("20:30", "20:30 夜2"),
     ("21:30", "21:30 夜3"),
+    ("22:30", "22:30 夜4"),
     ("23:00", "23:00 深夜"),
 ]
 
@@ -285,9 +288,9 @@ def main():
     parser = argparse.ArgumentParser(description="MBTI×恋愛ランキング ツイート生成")
     subparsers = parser.add_subparsers(dest="command")
 
-    daily_parser = subparsers.add_parser("daily", help="1日分（7本）を一括生成")
+    daily_parser = subparsers.add_parser("daily", help="1日分（10本）を一括生成")
     daily_parser.add_argument("--output-json", help="生成結果をJSONファイルに出力")
-    subparsers.add_parser("themes", help="テーマだけ7つ提案")
+    subparsers.add_parser("themes", help="テーマだけ10個提案")
     subparsers.add_parser("mumble", help="INTJのつぶやき1本")
 
     sp = subparsers.add_parser("single", help="テーマ・形式指定で1本生成")
