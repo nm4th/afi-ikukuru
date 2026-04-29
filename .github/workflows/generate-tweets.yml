@@ -4,9 +4,14 @@ on:
   schedule:
     - cron: '30 15 * * *'  # 00:30 JST - 生成
     - cron: '30 22 * * *'  # 07:30 JST - 投稿
+    - cron: '0 0 * * *'    # 09:00 JST - 投稿
     - cron: '15 3 * * *'   # 12:15 JST - 投稿
+    - cron: '0 6 * * *'    # 15:00 JST - 投稿
     - cron: '30 9 * * *'   # 18:30 JST - 投稿
+    - cron: '30 10 * * *'  # 19:30 JST - 投稿
+    - cron: '30 11 * * *'  # 20:30 JST - 投稿
     - cron: '30 12 * * *'  # 21:30 JST - 投稿
+    - cron: '30 13 * * *'  # 22:30 JST - 投稿
     - cron: '0 14 * * *'   # 23:00 JST - 投稿
   workflow_dispatch:
 
@@ -58,16 +63,21 @@ jobs:
           \`\`\`
 
           ---
-          ⏰ 投稿スケジュール: 7:30 / 12:15 / 18:30 / 21:30 / 23:00
+          ⏰ 投稿スケジュール: 7:30 / 9:00 / 12:15 / 15:00 / 18:30 / 19:30 / 20:30 / 21:30 / 22:30 / 23:00
           EOF
           )"
 
   post:
     if: |
       github.event.schedule == '30 22 * * *' ||
+      github.event.schedule == '0 0 * * *'   ||
       github.event.schedule == '15 3 * * *'  ||
+      github.event.schedule == '0 6 * * *'   ||
       github.event.schedule == '30 9 * * *'  ||
+      github.event.schedule == '30 10 * * *' ||
+      github.event.schedule == '30 11 * * *' ||
       github.event.schedule == '30 12 * * *' ||
+      github.event.schedule == '30 13 * * *' ||
       github.event.schedule == '0 14 * * *'
     runs-on: ubuntu-latest
     steps:
@@ -87,9 +97,14 @@ jobs:
           SCHEDULE="${{ github.event.schedule }}"
           case "$SCHEDULE" in
             '30 22 * * *') SLOT="07:30" ;;
+            '0 0 * * *')   SLOT="09:00" ;;
             '15 3 * * *')  SLOT="12:15" ;;
+            '0 6 * * *')   SLOT="15:00" ;;
             '30 9 * * *')  SLOT="18:30" ;;
+            '30 10 * * *') SLOT="19:30" ;;
+            '30 11 * * *') SLOT="20:30" ;;
             '30 12 * * *') SLOT="21:30" ;;
+            '30 13 * * *') SLOT="22:30" ;;
             '0 14 * * *')  SLOT="23:00" ;;
             *) echo "Unknown schedule: $SCHEDULE"; exit 1 ;;
           esac

@@ -104,6 +104,7 @@ def search_tweets(client: tweepy.Client, query: str, max_results: int = 20) -> l
             query=f"{query} -is:retweet -is:reply lang:ja min_faves:{MIN_LIKES}",
             max_results=max_results,
             tweet_fields=["public_metrics", "created_at", "author_id"],
+            user_auth=True,
         )
     except tweepy.Forbidden:
         print(f"  検索API利用不可: {query}")
@@ -111,6 +112,9 @@ def search_tweets(client: tweepy.Client, query: str, max_results: int = 20) -> l
     except tweepy.TooManyRequests:
         print(f"  レート制限: {query}")
         return []
+    except tweepy.Unauthorized as e:
+        print(f"  検索が拒否されました（pay-per-use billing 未設定の可能性）: {e}")
+        raise SystemExit(0)
 
     if not response.data:
         return []

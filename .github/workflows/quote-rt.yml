@@ -1,9 +1,8 @@
 name: ABEMA恋愛番組 引用RT分析
 
+# 一旦中止: pay-per-use コスト/Free tier制約のため定期実行を停止。
+# 必要なときだけ手動 dispatch で動かす運用に変更。
 on:
-  schedule:
-    # 毎日 20:00 JST（11:00 UTC）- ゴールデンタイム前に投稿
-    - cron: '0 11 * * *'
   workflow_dispatch:
     inputs:
       query:
