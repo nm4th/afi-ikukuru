@@ -43,7 +43,20 @@ def post_tweet(client: tweepy.Client, text: str, reply_to: str | None = None) ->
         kwargs["in_reply_to_tweet_id"] = str(reply_to)
         print(f"  → in_reply_to_tweet_id={kwargs['in_reply_to_tweet_id']}")
 
-    response = client.create_tweet(**kwargs)
+    try:
+        response = client.create_tweet(**kwargs)
+    except tweepy.HTTPException as e:
+        status = getattr(getattr(e, "response", None), "status_code", "?")
+        if status == 402:
+            print(
+                "\n!!! 402 Payment Required !!!\n"
+                "X API は2026年2月から pay-per-use 課金モデルに移行しました。\n"
+                "投稿を再開するには Developer Portal の Billing でクレジットを\n"
+                "追加してください（月次キャップの設定も忘れずに）。\n"
+                f"詳細: {e}\n"
+            )
+        raise
+
     if response.data is None:
         raise RuntimeError(f"create_tweet returned no data; errors={response.errors}")
     return str(response.data["id"])
