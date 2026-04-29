@@ -29,6 +29,18 @@ TARGET_ACCOUNT = "lovembti_analyz"
 MAX_HISTORY = 500
 
 
+def _api_error_message(e: tweepy.HTTPException) -> str:
+    """402 / 401 / 403 など API 拒否系のエラーメッセージを整形"""
+    status = getattr(getattr(e, "response", None), "status_code", "?")
+    if status == 402:
+        return f"402 Payment Required: pay-per-use のクレジット残高が0です。Developer Portal の Billing でクレジットを追加してください ({e})"
+    if status == 401:
+        return f"401 Unauthorized: 認証情報を確認してください ({e})"
+    if status == 403:
+        return f"403 Forbidden: エンドポイントへのアクセス権がありません ({e})"
+    return f"HTTP {status}: {e}"
+
+
 def get_client() -> tweepy.Client:
     return tweepy.Client(
         consumer_key=os.environ["X_API_KEY"],
@@ -97,8 +109,8 @@ def get_followers(client: tweepy.Client, target_user_id: str) -> list[dict]:
         if FOLLOWERS_CACHE.exists():
             return json.loads(FOLLOWERS_CACHE.read_text())["followers"]
         return []
-    except (tweepy.Unauthorized, tweepy.Forbidden) as e:
-        print(f"  フォロワー取得が拒否されました（pay-per-use 未契約 or billing 未設定の可能性）: {e}")
+    except tweepy.HTTPException as e:
+        print(f"  フォロワー取得が拒否されました: {_api_error_message(e)}")
         if FOLLOWERS_CACHE.exists():
             return json.loads(FOLLOWERS_CACHE.read_text())["followers"]
         return []
@@ -133,10 +145,13 @@ def like_followers_tweets(
                 exclude=["retweets", "replies"],
                 user_auth=True,
             )
-        except (tweepy.Forbidden, tweepy.TooManyRequests):
+        except tweepy.TooManyRequests:
             continue
-        except tweepy.Unauthorized as e:
-            print(f"  ツイート取得が拒否されました（billing 未設定の可能性）: {e}")
+        except tweepy.HTTPException as e:
+            status = getattr(getattr(e, "response", None), "status_code", None)
+            if status == 403:
+                continue  # 個別アカウントの拒否はスキップ
+            print(f"  ツイート取得が拒否されました: {_api_error_message(e)}")
             return liked
 
         if not response.data:
@@ -155,10 +170,14 @@ def like_followers_tweets(
                 client.like(tweet.id)
                 print(f"  ❤️ @{follower['username']}: {tweet.text[:80]}...")
                 save_liked(tweet_id, follower["username"])
-            except tweepy.Forbidden:
-                continue
             except tweepy.TooManyRequests:
                 print("  レート制限に達しました。終了します。")
+                return liked
+            except tweepy.HTTPException as e:
+                status = getattr(getattr(e, "response", None), "status_code", None)
+                if status == 403:
+                    continue
+                print(f"  いいねが拒否されました: {_api_error_message(e)}")
                 return liked
 
         liked_tweet_ids.add(tweet_id)
@@ -189,9 +208,8 @@ def main():
 
     try:
         target_user_id = resolve_user_id(client, TARGET_ACCOUNT)
-    except (tweepy.Unauthorized, tweepy.Forbidden) as e:
-        print(f"  対象アカウントの解決が拒否されました（pay-per-use billing 未設定の可能性）: {e}")
-        print("  Developer Portal で従量課金を有効化し、上限キャップを設定してください。")
+    except tweepy.HTTPException as e:
+        print(f"  対象アカウントの解決が拒否されました: {_api_error_message(e)}")
         return
     print(f"  対象アカウント: @{TARGET_ACCOUNT}")
 
