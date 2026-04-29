@@ -54,5 +54,14 @@ jobs:
           if [ -f history/quoted.jsonl ] && [ -n "$(git status history/quoted.jsonl --porcelain 2>/dev/null)" ]; then
             git add history/quoted.jsonl
             git commit -m "update quoted history $(TZ=Asia/Tokyo date '+%Y-%m-%d')"
-            git push
+            for i in 1 2 3 4 5; do
+              if git push; then
+                exit 0
+              fi
+              echo "push rejected (attempt $i/5). rebasing and retrying..."
+              sleep $((i * 2))
+              git pull --rebase origin main
+            done
+            echo "push failed after 5 retries"
+            exit 1
           fi
