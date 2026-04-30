@@ -45,8 +45,21 @@ jobs:
           if [ -d history ] && [ -n "$(git status history --porcelain)" ]; then
             git add history/
           fi
-          git commit -m "generate tweets $(TZ=Asia/Tokyo date '+%Y-%m-%d')" || echo "変更なし"
-          git push
+          if git diff --cached --quiet; then
+            echo "変更なし"
+          else
+            git commit -m "generate tweets $(TZ=Asia/Tokyo date '+%Y-%m-%d')"
+            for i in 1 2 3 4 5; do
+              if git push; then
+                exit 0
+              fi
+              echo "push rejected (attempt $i/5). rebasing and retrying..."
+              sleep $((i * 2))
+              git pull --rebase origin main
+            done
+            echo "push failed after 5 retries"
+            exit 1
+          fi
 
       - name: Create issue with results
         env:

@@ -50,4 +50,18 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A history/
-          git diff --cached --quiet || (git commit -m "update like history $(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M')" && git push)
+          if git diff --cached --quiet; then
+            echo "変更なし"
+          else
+            git commit -m "update like history $(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M')"
+            for i in 1 2 3 4 5; do
+              if git push; then
+                exit 0
+              fi
+              echo "push rejected (attempt $i/5). rebasing and retrying..."
+              sleep $((i * 2))
+              git pull --rebase origin main
+            done
+            echo "push failed after 5 retries"
+            exit 1
+          fi
