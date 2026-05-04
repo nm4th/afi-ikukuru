@@ -22,9 +22,9 @@ import tweepy
 
 HISTORY_FILE = Path(__file__).parent.parent / "history" / "hijacked.jsonl"
 SEARCH_QUERIES = ["MBTI", "INTJ", "INFJ", "ENFP", "ISTJ"]
-MIN_LIKES = 200
+MIN_LIKES = 500
 DAILY_CAP = 2  # 1日最大2回反応
-RECENT_HOURS = 4  # 直近4時間のツイートのみ対象
+RECENT_HOURS = 8  # 直近8時間のツイートのみ対象（cron に合わせて拡大）
 MAX_HISTORY = 500
 
 sys.path.insert(0, str(Path(__file__).parent))

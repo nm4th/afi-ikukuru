@@ -190,7 +190,7 @@ def like_followers_tweets(
 
 def main():
     parser = argparse.ArgumentParser(description="フォロワーへの自動いいね")
-    parser.add_argument("--count", type=int, default=6, help="いいね数（デフォルト: 6）")
+    parser.add_argument("--count", type=int, default=3, help="いいね数（デフォルト: 3）")
     parser.add_argument("--dry-run", action="store_true", help="いいねせず確認だけ")
     args = parser.parse_args()
 
