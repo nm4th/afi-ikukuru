@@ -1,0 +1,97 @@
+name: "アフィリエイトPR（火: バチェラーデート / 木: Photojoy）"
+
+# LINKTREE_URL secret が未設定の場合は何もせず exit 0 で終了する設計。
+# ASP承認 + Linktree 設定完了後に Settings → Secrets で LINKTREE_URL を追加。
+
+on:
+  schedule:
+    # 火曜 21:00 JST = 12:00 UTC: バチェラーデート
+    - cron: '0 12 * * 2'
+    # 木曜 21:00 JST = 12:00 UTC: Photojoy
+    - cron: '0 12 * * 4'
+  workflow_dispatch:
+    inputs:
+      service:
+        description: 'サービス'
+        required: true
+        type: choice
+        options:
+          - bachelor_date
+          - photojoy
+      format:
+        description: '形式'
+        required: false
+        default: 'thread'
+        type: choice
+        options:
+          - thread
+          - single
+      dry_run:
+        description: 'dry-run（投稿しない）'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+permissions:
+  contents: write
+
+jobs:
+  pr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r generator/requirements.txt
+
+      - name: Run PR post
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
+          LINKTREE_URL: ${{ secrets.LINKTREE_URL }}
+        run: |
+          # cron スケジュールから service を判定（手動 dispatch は inputs を使う）
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            SERVICE="${{ github.event.inputs.service }}"
+            FMT="${{ github.event.inputs.format || 'thread' }}"
+            ARGS="--service $SERVICE --format $FMT"
+            if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+              ARGS="$ARGS --dry-run"
+            fi
+          else
+            SCHEDULE="${{ github.event.schedule }}"
+            DAY=$(TZ=Asia/Tokyo date +%u)
+            case "$DAY" in
+              2) SERVICE="bachelor_date" ;;
+              4) SERVICE="photojoy" ;;
+              *) echo "Unexpected day-of-week: $DAY (cron: $SCHEDULE)"; exit 1 ;;
+            esac
+            ARGS="--service $SERVICE --format thread"
+          fi
+          echo "Running: python generator/pr_post.py $ARGS"
+          python generator/pr_post.py $ARGS
+
+      - name: Commit history
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if [ -f history/pr_posts.jsonl ] && [ -n "$(git status history/pr_posts.jsonl --porcelain 2>/dev/null)" ]; then
+            git add history/pr_posts.jsonl
+            git commit -m "update PR history $(TZ=Asia/Tokyo date '+%Y-%m-%d')"
+            for i in 1 2 3 4 5; do
+              if git push; then
+                exit 0
+              fi
+              echo "push rejected (attempt $i/5). rebasing..."
+              sleep $((i * 2))
+              git pull --rebase origin main
+            done
+            exit 1
+          fi
