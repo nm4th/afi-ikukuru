@@ -1,13 +1,9 @@
-name: バズMBTIへのリプ（1日3回）
+name: バズMBTIへのリプ（1日1回・21:00 JST）
 
 on:
   schedule:
-    # 12:00 JST = 03:00 UTC
-    - cron: '0 3 * * *'
-    # 17:00 JST = 08:00 UTC
-    - cron: '0 8 * * *'
-    # 22:00 JST = 13:00 UTC
-    - cron: '0 13 * * *'
+    # 21:00 JST = 12:00 UTC（プライムタイムに1本だけ）
+    - cron: '0 12 * * *'
   workflow_dispatch:
     inputs:
       dry_run:

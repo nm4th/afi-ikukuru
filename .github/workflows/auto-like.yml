@@ -8,7 +8,7 @@ on:
       count:
         description: 'いいね数'
         required: false
-        default: '6'
+        default: '3'
       dry_run:
         description: 'dry-run（いいねせず確認だけ）'
         required: false
@@ -38,7 +38,7 @@ jobs:
           X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
           X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
         run: |
-          COUNT="${{ github.event.inputs.count || '6' }}"
+          COUNT="${{ github.event.inputs.count || '3' }}"
           ARGS="--count $COUNT"
           if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
             ARGS="$ARGS --dry-run"
