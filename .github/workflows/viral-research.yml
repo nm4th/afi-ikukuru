@@ -1,0 +1,62 @@
+name: バズツイート研究（週次・MBTI/INTJ）
+
+on:
+  schedule:
+    # 日曜 12:00 JST = 03:00 UTC
+    - cron: '0 3 * * 0'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'dry-run（保存しない）'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+permissions:
+  contents: write
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r generator/requirements.txt
+
+      - name: Run viral research
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
+        run: |
+          ARGS=""
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          python generator/viral_research.py $ARGS
+
+      - name: Commit history
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if [ -f history/viral_references.jsonl ] && [ -n "$(git status history/viral_references.jsonl --porcelain 2>/dev/null)" ]; then
+            git add history/viral_references.jsonl
+            git commit -m "viral research $(TZ=Asia/Tokyo date '+%Y-%m-%d')"
+            for i in 1 2 3 4 5; do
+              if git push; then
+                exit 0
+              fi
+              echo "push rejected (attempt $i/5). rebasing and retrying..."
+              sleep $((i * 2))
+              git pull --rebase origin main
+            done
+            echo "push failed after 5 retries"
+            exit 1
+          fi

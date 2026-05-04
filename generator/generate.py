@@ -106,6 +106,22 @@ def load_history(category: str, limit: int = 30) -> str:
     return "\n".join(entries)
 
 
+def load_viral_references(limit: int = 2) -> str:
+    """直近の viral_research.py 出力を文字列で返す（DAILY_THEMES_PROMPT 用）"""
+    path = HISTORY_DIR / "viral_references.jsonl"
+    if not path.exists():
+        return "(まだ研究履歴なし。普段の方針で生成してOK)"
+    lines = path.read_text().strip().split("\n")
+    if not lines:
+        return "(まだ研究履歴なし。普段の方針で生成してOK)"
+    recent = lines[-limit:]
+    out = []
+    for line in recent:
+        d = json.loads(line)
+        out.append(f"[{d['date'][:10]}]\n{d['analysis']}")
+    return "\n\n".join(out)
+
+
 def save_history(category: str, text: str):
     HISTORY_DIR.mkdir(exist_ok=True)
     history_file = HISTORY_DIR / f"{category}.jsonl"
@@ -150,7 +166,8 @@ def detect_format(line: str) -> str:
 def generate_themes() -> list[dict]:
     """テーマと形式のペアを10個提案"""
     history = load_history("themes")
-    prompt = DAILY_THEMES_PROMPT.format(history=history)
+    viral_context = load_viral_references()
+    prompt = DAILY_THEMES_PROMPT.format(history=history, viral_context=viral_context)
     result = generate(prompt)
 
     entries = []

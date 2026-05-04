@@ -1,0 +1,68 @@
+name: MBTI/INTJ 引用RT（火・金 21:00 JST）
+
+on:
+  schedule:
+    # 火曜・金曜 21:00 JST = 12:00 UTC
+    - cron: '0 12 * * 2,5'
+  workflow_dispatch:
+    inputs:
+      query:
+        description: 'クエリ指定（空欄なら全クエリで検索）'
+        required: false
+      dry_run:
+        description: 'dry-run（投稿せず確認だけ）'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+permissions:
+  contents: write
+
+jobs:
+  quote-rt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r generator/requirements.txt
+
+      - name: Run quote RT
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
+        run: |
+          ARGS=""
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          if [ -n "${{ github.event.inputs.query }}" ]; then
+            ARGS="$ARGS --query '${{ github.event.inputs.query }}'"
+          fi
+          eval python generator/mbti_quote_rt.py $ARGS
+
+      - name: Commit history
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if [ -f history/mbti_quoted.jsonl ] && [ -n "$(git status history/mbti_quoted.jsonl --porcelain 2>/dev/null)" ]; then
+            git add history/mbti_quoted.jsonl
+            git commit -m "update mbti quoted $(TZ=Asia/Tokyo date '+%Y-%m-%d')"
+            for i in 1 2 3 4 5; do
+              if git push; then
+                exit 0
+              fi
+              echo "push rejected (attempt $i/5). rebasing and retrying..."
+              sleep $((i * 2))
+              git pull --rebase origin main
+            done
+            echo "push failed after 5 retries"
+            exit 1
+          fi
