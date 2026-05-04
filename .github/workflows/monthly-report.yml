@@ -1,0 +1,61 @@
+name: 月初のマチアプ収支報告（毎月1日 21:00 JST）
+
+on:
+  schedule:
+    # 毎月1日 21:00 JST = 12:00 UTC
+    - cron: '0 12 1 * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'dry-run（投稿しない）'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+permissions:
+  contents: write
+
+jobs:
+  monthly:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r generator/requirements.txt
+
+      - name: Run monthly report
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
+        run: |
+          ARGS=""
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          python generator/monthly_report.py $ARGS
+
+      - name: Commit history
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if [ -f history/monthly_report.jsonl ] && [ -n "$(git status history/monthly_report.jsonl --porcelain 2>/dev/null)" ]; then
+            git add history/monthly_report.jsonl
+            git commit -m "update monthly report $(TZ=Asia/Tokyo date '+%Y-%m')"
+            for i in 1 2 3 4 5; do
+              if git push; then
+                exit 0
+              fi
+              echo "push rejected (attempt $i/5). rebasing..."
+              sleep $((i * 2))
+              git pull --rebase origin main
+            done
+            exit 1
+          fi
