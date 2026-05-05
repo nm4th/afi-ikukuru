@@ -31,15 +31,15 @@ import tweepy
 
 HISTORY_FILE = Path(__file__).parent.parent / "history" / "replied.jsonl"
 SEARCH_QUERIES = ["MBTI 恋愛", "INTJ 恋愛", "MBTI 相性", "INFJ 恋愛", "ENFP 恋愛"]
-MIN_LIKES = 300
+MIN_LIKES = 200
 MAX_LIKES = 10000  # 炎上回避
 MAX_HISTORY = 500
 RECENT_AUTHOR_DAYS = 14
 
-# 攻撃的単語（含まれていたら除外）
+# 攻撃的単語（含まれていたら除外）— 本当に攻撃的なものだけに絞る
+# （旧版の バカ/アホ/終わり/ks は誤検出が多すぎて候補が全消えしていた）
 HOSTILE_PATTERNS = [
-    r"死ね", r"殺す", r"クソ", r"ks", r"ガイジ", r"バカ", r"アホ",
-    r"終わり", r"消えろ",
+    r"死ね", r"殺す", r"ガイジ", r"消えろ", r"○ね",
 ]
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -90,8 +90,10 @@ def is_hostile(text: str) -> bool:
     return any(re.search(p, text) for p in HOSTILE_PATTERNS)
 
 
-def search_targets(client: tweepy.Client, queries: list[str]) -> list[dict]:
+def search_targets(client: tweepy.Client, queries: list[str]) -> tuple[list[dict], dict]:
+    """検索結果と、診断用の集計（クエリ別件数 + HTTPエラー集計）を返す"""
     all_tweets = []
+    diag = {"per_query": {}, "errors": {}}
     for q in queries:
         print(f"  検索中: {q}")
         try:
@@ -102,15 +104,27 @@ def search_targets(client: tweepy.Client, queries: list[str]) -> list[dict]:
                 user_auth=True,
             )
         except tweepy.TooManyRequests:
-            print(f"    レート制限")
+            print(f"    ⚠️ レート制限")
+            diag["errors"]["429"] = diag["errors"].get("429", 0) + 1
+            diag["per_query"][q] = "rate_limit"
             continue
         except tweepy.HTTPException as e:
             status = getattr(getattr(e, "response", None), "status_code", "?")
+            body = ""
+            try:
+                body = getattr(e.response, "text", "")[:200]
+            except Exception:
+                pass
             if status == 402:
-                print(f"    402 Payment Required（クレジット切れ）")
+                print(f"    ⛔ 402 Payment Required（pay-per-use クレジット切れ）: {body}")
                 raise SystemExit(0)
-            print(f"    HTTP {status} エラー: {e}")
+            print(f"    ⚠️ HTTP {status}: {body}")
+            diag["errors"][str(status)] = diag["errors"].get(str(status), 0) + 1
+            diag["per_query"][q] = f"http_{status}"
             continue
+        n = len(response.data) if response.data else 0
+        diag["per_query"][q] = n
+        print(f"    → {n}件")
         if not response.data:
             continue
         for t in response.data:
@@ -132,27 +146,33 @@ def search_targets(client: tweepy.Client, queries: list[str]) -> list[dict]:
             seen.add(t["id"])
             unique.append(t)
     unique.sort(key=lambda t: t["score"], reverse=True)
-    return unique
+    return unique, diag
 
 
-def pick_target(candidates: list[dict], replied_ids: set[str], author_last: dict[str, str]) -> dict | None:
+def pick_target(candidates: list[dict], replied_ids: set[str], author_last: dict[str, str]) -> tuple[dict | None, dict]:
+    """ターゲット選定 + 除外理由の集計を返す（診断用）"""
     cutoff = datetime.now() - timedelta(days=RECENT_AUTHOR_DAYS)
+    rejected = {"already_replied": 0, "mega_viral": 0, "hostile": 0, "recent_author": 0}
     for t in candidates:
         if t["id"] in replied_ids:
+            rejected["already_replied"] += 1
             continue
         if t["metrics"]["like_count"] > MAX_LIKES:
-            continue  # 炎上回避
+            rejected["mega_viral"] += 1
+            continue
         if is_hostile(t["text"]):
+            rejected["hostile"] += 1
             continue
         last = author_last.get(t["author_id"], "")
         if last:
             try:
                 if datetime.fromisoformat(last) > cutoff:
-                    continue  # 同一authorへの直近リプ禁止
+                    rejected["recent_author"] += 1
+                    continue
             except (ValueError, TypeError):
                 pass
-        return t
-    return None
+        return t, rejected
+    return None, rejected
 
 
 def generate_reply(target_text: str, context_replies: str = "(なし)") -> str:
@@ -203,12 +223,25 @@ def main():
     print("=== バズツイ コメント欄リプ ===\n")
     print(f"  過去リプ: {len(replied_ids)}件 / 直近{RECENT_AUTHOR_DAYS}日リプ済author: {len(author_last)}件\n")
 
-    candidates = search_targets(x_client, SEARCH_QUERIES)
-    print(f"\n  候補: {len(candidates)}件")
+    candidates, search_diag = search_targets(x_client, SEARCH_QUERIES)
+    print(f"\n  クエリ別: {search_diag['per_query']}")
+    if search_diag["errors"]:
+        print(f"  HTTPエラー集計: {search_diag['errors']}")
+    print(f"  候補（重複除外後）: {len(candidates)}件")
 
-    target = pick_target(candidates, replied_ids, author_last)
+    target, rejected = pick_target(candidates, replied_ids, author_last)
     if not target:
-        print("適切なリプ対象が見つかりませんでした")
+        print(f"\n  ⚠️ 適切なリプ対象が見つかりませんでした")
+        print(f"  除外内訳: {rejected}")
+        if not candidates and not search_diag["errors"]:
+            print(
+                f"  → 全クエリで0件・エラーなし。原因候補:\n"
+                f"     (1) min_faves={MIN_LIKES} が高すぎ、Niche のバズ閾値に届いていない\n"
+                f"     (2) 検索クエリが微妙\n"
+                f"     (3) 該当言語/期間にツイートが本当に無い"
+            )
+        elif search_diag["errors"]:
+            print(f"  → search_recent_tweets が HTTP エラーで失敗。X API 設定を要確認")
         return
 
     m = target["metrics"]
