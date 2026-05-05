@@ -145,21 +145,58 @@ def generate(prompt: str, max_tokens: int = 1500) -> str:
 
 
 def detect_format(line: str) -> str:
-    """テーマ行のラベルから形式を推定"""
-    if "全16タイプ網羅" in line or "網羅" in line:
+    """テーマ行から形式を推定。
+    優先順位:
+      (1) 角括弧内の英語キー（最も明示的、最強）
+      (2) 角括弧内の日本語の特定的フォーマット名（全16タイプ網羅、比喩型 等）
+      (3) テーマ本文中の強い内容キーワード（一覧/例えたら/本当の理由）
+          → ラベルが「[ランキング5→1位は↓]」でも、内容で full16/metaphor/contrast に上書き
+      (4) 汎用ラベル（tease / straight / tier）の検出
+    """
+    import re
+
+    # (1) 角括弧内の英語キー
+    bracket = re.search(r"\[([^\]]+)\]", line)
+    if bracket:
+        key = bracket.group(1).strip().lower()
+        for fmt in ("full16", "contrast", "metaphor", "compat"):
+            if fmt in key:
+                return fmt
+
+    # (2) 角括弧内の日本語の特定的フォーマット名
+    if "全16タイプ網羅" in line or "網羅型" in line:
         return "full16"
-    if "比喩" in line:
+    if "比喩型" in line:
         return "metaphor"
-    if "対比" in line:
+    if "対比型" in line:
         return "contrast"
-    if "相性" in line:
+    if "相性ランキング" in line:
         return "compat"
-    if "Tier" in line or "tier" in line:
+    if "Tier表" in line:
         return "tier"
+
+    # (3) テーマ本文の強い内容キーワード（汎用ラベルを上書きする）
+    if "全16タイプ" in line or "16タイプ一覧" in line or "全タイプ" in line:
+        return "full16"
+    if re.search(r"例え(たら|ると|て|る)", line) or "に例える" in line:
+        return "metaphor"
+    if "本当の理由" in line:
+        return "contrast"
+
+    # (4) 汎用ラベルの検出
+    if bracket:
+        key = bracket.group(1).strip().lower()
+        if "tier" in key:
+            return "tier"
+        if "straight" in key or "1→5" in key or "1->5" in key:
+            return "straight"
+        if "tease" in key or "5→1" in key or "5->1" in key or "1位は↓" in key:
+            return "tease"
     if "1→5" in line or "1->5" in line:
         return "straight"
     if "5→1" in line or "5->1" in line or "1位は↓" in line:
         return "tease"
+
     return "tease"
 
 
