@@ -185,6 +185,43 @@ def upload_image_to_x(client, image_path: Path | str) -> Optional[str]:
     return str(media.media_id)
 
 
+def _clean_html_output(s: str) -> str:
+    """Claudeが返したHTML本文から markdown コードフェンス・doctype・html/body
+    タグ・余計な前置きを除去。「```html」がそのままテキストとして画像に
+    出てしまう事故を防ぐ。
+    """
+    import re
+
+    s = s.strip()
+
+    # ```html\n...\n``` 形式のコードフェンスを除去
+    fence_pattern = re.compile(r"^```\s*[a-zA-Z]*\s*\n?(.*?)\n?```\s*$", re.DOTALL)
+    m = fence_pattern.match(s)
+    if m:
+        s = m.group(1).strip()
+    else:
+        # 開始だけ ``` で終わりが無い、または逆のパターンにも対応
+        if s.startswith("```"):
+            first_nl = s.find("\n")
+            if first_nl != -1:
+                s = s[first_nl + 1 :]
+            else:
+                s = s.lstrip("`").lstrip("html").lstrip()
+        if s.endswith("```"):
+            s = s[: -3].rstrip()
+
+    # 単独の "html" 行が残ってるケース（fence外しても残るパターン）
+    s = re.sub(r"^\s*html\s*\n", "", s, count=1, flags=re.IGNORECASE)
+
+    # <!DOCTYPE>, <html>, <head>...</head>, <body>, </body>, </html> を除去
+    s = re.sub(r"<!DOCTYPE[^>]*>", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"<head[^>]*>.*?</head>", "", s, flags=re.IGNORECASE | re.DOTALL)
+    s = re.sub(r"</?html[^>]*>", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"</?body[^>]*>", "", s, flags=re.IGNORECASE)
+
+    return s.strip()
+
+
 def generate_html_body(text: str, format_type: str) -> str:
     """テキストとフォーマット名から、Claude経由でHTML本文を生成"""
     import sys
@@ -201,7 +238,7 @@ def generate_html_body(text: str, format_type: str) -> str:
     )
     for block in msg.content:
         if block.type == "text":
-            return block.text.strip()
+            return _clean_html_output(block.text)
     return ""
 
 
