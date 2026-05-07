@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """
-アフィリエイトPR投稿（バチェラーデート / Photojoy → 単一の Linktree URL）
+バチェラーデート アフィリエイトPR投稿
 
 ステマ規制対応:
 - 全ツイの先頭ツイ（または単独ツイ）の冒頭に【PR】を必ず明記
-- リンク先は Linktree のハブページ（LINKTREE_URL secret）
+- リンク先は BACHELOR_DATE_URL secret（直リンク）
 
 GitHub Secrets が未設定の場合は何もせず exit 0（安全装置）。
 
 使い方:
-  python pr_post.py --service bachelor_date --format thread
-  python pr_post.py --service photojoy --format single --dry-run
+  python pr_post.py                       # 投稿（デフォルト thread）
+  python pr_post.py --format single       # 単独ツイ
+  python pr_post.py --dry-run             # 投稿せず生成だけ
 """
 
 import argparse
@@ -27,11 +28,7 @@ import tweepy
 HISTORY_FILE = Path(__file__).parent.parent / "history" / "pr_posts.jsonl"
 MAX_HISTORY = 200
 PR_PREFIX = "【PR】"
-
-SERVICE_CONFIG = {
-    "bachelor_date": {"name": "バチェラーデート"},
-    "photojoy": {"name": "Photojoy"},
-}
+SERVICE_NAME = "バチェラーデート"
 
 sys.path.insert(0, str(Path(__file__).parent))
 from generate import MODEL, get_client as get_claude
@@ -39,15 +36,11 @@ from prompts import (
     SYSTEM_PROMPT,
     PR_BACHELOR_DATE_THREAD_PROMPT,
     PR_BACHELOR_DATE_SINGLE_PROMPT,
-    PR_PHOTOJOY_THREAD_PROMPT,
-    PR_PHOTOJOY_SINGLE_PROMPT,
 )
 
 PROMPTS = {
-    ("bachelor_date", "thread"): PR_BACHELOR_DATE_THREAD_PROMPT,
-    ("bachelor_date", "single"): PR_BACHELOR_DATE_SINGLE_PROMPT,
-    ("photojoy", "thread"): PR_PHOTOJOY_THREAD_PROMPT,
-    ("photojoy", "single"): PR_PHOTOJOY_SINGLE_PROMPT,
+    "thread": PR_BACHELOR_DATE_THREAD_PROMPT,
+    "single": PR_BACHELOR_DATE_SINGLE_PROMPT,
 }
 
 
@@ -60,26 +53,25 @@ def get_x_client() -> tweepy.Client:
     )
 
 
-def load_recent_pr(service: str, limit: int = 20) -> str:
-    """指定サービスの過去PRを取得（被り回避用）"""
+def load_recent_pr(limit: int = 20) -> str:
+    """過去PRを取得（被り回避用）"""
     if not HISTORY_FILE.exists():
         return "(まだ履歴なし)"
-    lines = HISTORY_FILE.read_text().strip().split("\n")[-limit * 4:]
+    lines = HISTORY_FILE.read_text().strip().split("\n")[-limit:]
     out = []
     for line in lines:
         if not line:
             continue
         d = json.loads(line)
-        if d.get("service") == service:
-            out.append(f"- [{d['date'][:10]}] {d['summary'][:120]}")
-    return "\n".join(out[-limit:]) or "(該当履歴なし)"
+        out.append(f"- [{d['date'][:10]}] {d['summary'][:120]}")
+    return "\n".join(out) or "(履歴なし)"
 
 
-def save(service: str, fmt: str, summary: str, posted_ids: list[str]):
+def save(fmt: str, summary: str, posted_ids: list[str]):
     HISTORY_FILE.parent.mkdir(exist_ok=True)
     entry = {
         "date": datetime.now().isoformat(),
-        "service": service,
+        "service": "bachelor_date",
         "format": fmt,
         "summary": summary[:300],
         "posted_ids": posted_ids,
@@ -91,9 +83,9 @@ def save(service: str, fmt: str, summary: str, posted_ids: list[str]):
         HISTORY_FILE.write_text("\n".join(lines[-MAX_HISTORY:]) + "\n")
 
 
-def generate(service: str, fmt: str) -> str:
-    history = load_recent_pr(service)
-    prompt = PROMPTS[(service, fmt)].format(history=history)
+def generate(fmt: str) -> str:
+    history = load_recent_pr()
+    prompt = PROMPTS[fmt].format(history=history)
     client = get_claude()
     msg = client.messages.create(
         model=MODEL,
@@ -120,7 +112,6 @@ def ensure_pr_prefix(text: str) -> str:
 
 
 def substitute_url(text: str, url: str) -> str:
-    """{url} placeholder を実URLに置換"""
     return text.replace("{url}", url)
 
 
@@ -147,8 +138,7 @@ def post_thread(client: tweepy.Client, tweets: list[str]) -> list[str]:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="アフィリエイトPR投稿")
-    parser.add_argument("--service", required=True, choices=list(SERVICE_CONFIG))
+    parser = argparse.ArgumentParser(description=f"アフィリエイトPR投稿（{SERVICE_NAME}）")
     parser.add_argument("--format", default="thread", choices=["thread", "single"])
     parser.add_argument("--dry-run", action="store_true", help="投稿しない")
     args = parser.parse_args()
@@ -157,17 +147,16 @@ def main():
         print("エラー: ANTHROPIC_API_KEY が設定されていません")
         sys.exit(1)
 
-    # 安全装置: LINKTREE_URL が空なら exit 0（ASP承認待ち期間）
-    linktree_url = os.environ.get("LINKTREE_URL", "").strip()
-    if not linktree_url:
+    # 安全装置: BACHELOR_DATE_URL が空なら exit 0
+    affiliate_url = os.environ.get("BACHELOR_DATE_URL", "").strip()
+    if not affiliate_url:
         if args.dry_run:
-            linktree_url = "https://linktr.ee/EXAMPLE"
-            print("⚠️  LINKTREE_URL 未設定（dry-run なので example URL で続行）")
+            affiliate_url = "https://example.com/bachelor-date-affiliate"
+            print("⚠️  BACHELOR_DATE_URL 未設定（dry-run なので example URL で続行）")
         else:
             print(
-                "⚠️  LINKTREE_URL secret が未設定です。\n"
-                "   ASP承認 + Linktree 設定が完了したら GitHub の\n"
-                "   Settings → Secrets → Actions に LINKTREE_URL を追加してください。\n"
+                "⚠️  BACHELOR_DATE_URL secret が未設定です。\n"
+                "   GitHub の Settings → Secrets → Actions に BACHELOR_DATE_URL を追加してください。\n"
                 "   今回は何もせず exit 0 で終了します。"
             )
             return
@@ -178,10 +167,9 @@ def main():
                 print(f"エラー: {var} が設定されていません")
                 sys.exit(1)
 
-    service_name = SERVICE_CONFIG[args.service]["name"]
-    print(f"=== PR: {service_name} ({args.format}) ===\n")
+    print(f"=== PR: {SERVICE_NAME} ({args.format}) ===\n")
 
-    raw = generate(args.service, args.format)
+    raw = generate(args.format)
     if args.format == "thread":
         tweets = parse_thread(raw)
         if len(tweets) < 3:
@@ -193,7 +181,7 @@ def main():
     # 1) 先頭ツイに【PR】を強制付与
     tweets[0] = ensure_pr_prefix(tweets[0])
     # 2) {url} placeholder を実URLに置換
-    tweets = [substitute_url(t, linktree_url) for t in tweets]
+    tweets = [substitute_url(t, affiliate_url) for t in tweets]
 
     print("--- 生成結果 ---")
     for i, t in enumerate(tweets, 1):
@@ -208,7 +196,7 @@ def main():
     print("\n=== 投稿開始 ===")
     x_client = get_x_client()
     posted = post_thread(x_client, tweets)
-    save(args.service, args.format, tweets[0], posted)
+    save(args.format, tweets[0], posted)
     print(f"\n投稿完了: {len(posted)} tweets")
 
 
