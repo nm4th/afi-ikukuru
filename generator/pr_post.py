@@ -115,7 +115,13 @@ def substitute_url(text: str, url: str) -> str:
     return text.replace("{url}", url)
 
 
+def build_url_reply(url: str) -> str:
+    """URL専用リプの本文を組み立て。【PR】明記必須（広告本体のため）"""
+    return f"【PR】 公式リンクはこちら↓\n\n{url}"
+
+
 def post_thread(client: tweepy.Client, tweets: list[str]) -> list[str]:
+    """本文ツイートを順にリプで連投。各ツイのIDをリストで返す"""
     posted = []
     prev_id = None
     for i, text in enumerate(tweets, 1):
@@ -178,14 +184,21 @@ def main():
     else:
         tweets = [raw]
 
-    # 1) 先頭ツイに【PR】を強制付与
+    # 1) 先頭ツイに【PR】を強制付与（プロンプト指示が漏れた場合の belt-and-suspenders）
     tweets[0] = ensure_pr_prefix(tweets[0])
-    # 2) {url} placeholder を実URLに置換
-    tweets = [substitute_url(t, affiliate_url) for t in tweets]
+
+    # 2) 本文に紛れ込んだ {url} やURLは除去（プロンプトで禁止してるが念のため）
+    tweets = [substitute_url(t, "").strip() for t in tweets]
+
+    # 3) URL専用リプ（広告本体、【PR】必須）を最後に追加
+    url_reply = build_url_reply(affiliate_url)
+    all_posts = tweets + [url_reply]
 
     print("--- 生成結果 ---")
-    for i, t in enumerate(tweets, 1):
-        print(f"\nツイ{i} ({len(t)}字):\n{t}")
+    for i, t in enumerate(all_posts, 1):
+        is_url_reply = (i == len(all_posts))
+        label = "URLリプ" if is_url_reply else f"ツイ{i}"
+        print(f"\n{label} ({len(t)}字):\n{t}")
         if len(t) > 280:
             print(f"  ⚠️ {len(t)}字 > 280字。X側で切られる可能性")
 
@@ -195,9 +208,9 @@ def main():
 
     print("\n=== 投稿開始 ===")
     x_client = get_x_client()
-    posted = post_thread(x_client, tweets)
+    posted = post_thread(x_client, all_posts)
     save(args.format, tweets[0], posted)
-    print(f"\n投稿完了: {len(posted)} tweets")
+    print(f"\n投稿完了: {len(posted)} tweets（うち最後の1件はURL専用リプ）")
 
 
 if __name__ == "__main__":
