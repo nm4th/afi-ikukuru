@@ -121,14 +121,17 @@ def post_from_json(json_path: str, slot_filter: str | None = None, no_image: boo
 
         print(f"\n--- [{slot}] {theme} ---")
 
-        media_ids = None if no_image else maybe_render_and_upload(client, main_text, fmt, slot)
-
-        tweet_id = post_tweet(client, main_text, media_ids=media_ids)
+        # 本ツイ用画像（IMAGE_FORMATS のみ）
+        main_media = None if no_image else maybe_render_and_upload(client, main_text, fmt, f"{slot}-main")
+        tweet_id = post_tweet(client, main_text, media_ids=main_media)
         print(f"  本ツイート投稿完了 (ID: {tweet_id})")
 
         if reply_text:
             time.sleep(2)
-            reply_id = post_tweet(client, reply_text, reply_to=tweet_id)
+            # リプライ用画像も IMAGE_FORMATS なら別途レンダリングして添付
+            # （full16 のリプは残り8タイプの一覧があるので画像化価値あり）
+            reply_media = None if no_image else maybe_render_and_upload(client, reply_text, fmt, f"{slot}-reply")
+            reply_id = post_tweet(client, reply_text, reply_to=tweet_id, media_ids=reply_media)
             print(f"  リプライ投稿完了 (ID: {reply_id})")
 
         time.sleep(3)
