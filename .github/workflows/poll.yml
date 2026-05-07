@@ -1,9 +1,8 @@
-name: Poll投票（火・木・土 20:00 JST）
+name: Poll投票（停止中・手動のみ）
 
+# Poll投票はインプレッションが伸びなかったため定期実行を停止。
+# 試したい時だけ手動 workflow_dispatch で動かす運用に変更。
 on:
-  schedule:
-    # 火・木・土 20:00 JST = 11:00 UTC
-    - cron: '0 11 * * 2,4,6'
   workflow_dispatch:
     inputs:
       dry_run:
