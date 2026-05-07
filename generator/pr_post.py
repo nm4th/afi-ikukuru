@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
 """
-バチェラーデート アフィリエイトPR投稿
+バチェラーデート アフィリエイトPR投稿（火・木・土 21:00 JST、週3回）
+
+物語アーク2種を交互に投稿:
+- arc="next"  : マチアプ8年失敗 → 「次これ試す」
+- arc="tried" : バチェラーデート使ってみた → INTJ自爆
 
 ステマ規制対応:
-- 全ツイの先頭ツイ（または単独ツイ）の冒頭に【PR】を必ず明記
+- 先頭ツイ冒頭 + URL専用リプ冒頭 の両方に【PR】明記
 - リンク先は BACHELOR_DATE_URL secret（直リンク）
+- URL は本文には絶対に含めず、最後に独立リプとして投稿
 
 GitHub Secrets が未設定の場合は何もせず exit 0（安全装置）。
 
 使い方:
-  python pr_post.py                       # 投稿（デフォルト thread）
+  python pr_post.py                       # 投稿（デフォルト thread, arc=auto）
+  python pr_post.py --arc tried           # tried アーク強制
   python pr_post.py --format single       # 単独ツイ
   python pr_post.py --dry-run             # 投稿せず生成だけ
 """
@@ -36,11 +42,19 @@ from prompts import (
     SYSTEM_PROMPT,
     PR_BACHELOR_DATE_THREAD_PROMPT,
     PR_BACHELOR_DATE_SINGLE_PROMPT,
+    PR_BACHELOR_DATE_TRIED_PROMPT,
 )
 
+# (format, arc) → prompt
+# - thread + next  : 失敗 → 次バチェラーデート試す（5ツイ）
+# - thread + tried : バチェラーデート使ってみた → INTJ自爆（5ツイ）
+# - single + next  : 1ツイで「次これ試す」型
+# - single + tried : 1ツイで「使ってみた自爆」型（同 thread tried を圧縮した版）
 PROMPTS = {
-    "thread": PR_BACHELOR_DATE_THREAD_PROMPT,
-    "single": PR_BACHELOR_DATE_SINGLE_PROMPT,
+    ("thread", "next"): PR_BACHELOR_DATE_THREAD_PROMPT,
+    ("thread", "tried"): PR_BACHELOR_DATE_TRIED_PROMPT,
+    ("single", "next"): PR_BACHELOR_DATE_SINGLE_PROMPT,
+    ("single", "tried"): PR_BACHELOR_DATE_SINGLE_PROMPT,  # フォールバック（next 用を流用）
 }
 
 
@@ -53,26 +67,49 @@ def get_x_client() -> tweepy.Client:
     )
 
 
-def load_recent_pr(limit: int = 20) -> str:
-    """過去PRを取得（被り回避用）"""
+def load_recent_pr(arc: str | None = None, limit: int = 20) -> str:
+    """過去PRを取得（被り回避用）。arc 指定時はそのアークだけに絞る"""
     if not HISTORY_FILE.exists():
         return "(まだ履歴なし)"
-    lines = HISTORY_FILE.read_text().strip().split("\n")[-limit:]
+    lines = HISTORY_FILE.read_text().strip().split("\n")
     out = []
-    for line in lines:
+    for line in reversed(lines):
         if not line:
             continue
         d = json.loads(line)
+        if arc and d.get("arc") != arc:
+            continue
         out.append(f"- [{d['date'][:10]}] {d['summary'][:120]}")
-    return "\n".join(out) or "(履歴なし)"
+        if len(out) >= limit:
+            break
+    return "\n".join(reversed(out)) or "(履歴なし)"
 
 
-def save(fmt: str, summary: str, posted_ids: list[str]):
+def determine_arc() -> str:
+    """history を見て次の arc を決定（直近 next なら tried、逆もまた然り）"""
+    if not HISTORY_FILE.exists():
+        return "next"
+    lines = HISTORY_FILE.read_text().strip().split("\n")
+    for line in reversed(lines):
+        if not line:
+            continue
+        d = json.loads(line)
+        last_arc = d.get("arc")
+        if last_arc == "next":
+            return "tried"
+        if last_arc == "tried":
+            return "next"
+    # arc 記録のない古い履歴しかない場合は next から始める
+    return "next"
+
+
+def save(fmt: str, arc: str, summary: str, posted_ids: list[str]):
     HISTORY_FILE.parent.mkdir(exist_ok=True)
     entry = {
         "date": datetime.now().isoformat(),
         "service": "bachelor_date",
         "format": fmt,
+        "arc": arc,
         "summary": summary[:300],
         "posted_ids": posted_ids,
     }
@@ -83,9 +120,9 @@ def save(fmt: str, summary: str, posted_ids: list[str]):
         HISTORY_FILE.write_text("\n".join(lines[-MAX_HISTORY:]) + "\n")
 
 
-def generate(fmt: str) -> str:
-    history = load_recent_pr()
-    prompt = PROMPTS[fmt].format(history=history)
+def generate(fmt: str, arc: str) -> str:
+    history = load_recent_pr(arc=arc)
+    prompt = PROMPTS[(fmt, arc)].format(history=history)
     client = get_claude()
     msg = client.messages.create(
         model=MODEL,
@@ -146,6 +183,12 @@ def post_thread(client: tweepy.Client, tweets: list[str]) -> list[str]:
 def main():
     parser = argparse.ArgumentParser(description=f"アフィリエイトPR投稿（{SERVICE_NAME}）")
     parser.add_argument("--format", default="thread", choices=["thread", "single"])
+    parser.add_argument(
+        "--arc",
+        default="auto",
+        choices=["auto", "next", "tried"],
+        help="物語アーク: auto=履歴を見て交互、next=次行く型、tried=使ってみた型",
+    )
     parser.add_argument("--dry-run", action="store_true", help="投稿しない")
     args = parser.parse_args()
 
@@ -173,9 +216,10 @@ def main():
                 print(f"エラー: {var} が設定されていません")
                 sys.exit(1)
 
-    print(f"=== PR: {SERVICE_NAME} ({args.format}) ===\n")
+    arc = args.arc if args.arc != "auto" else determine_arc()
+    print(f"=== PR: {SERVICE_NAME} (format={args.format}, arc={arc}) ===\n")
 
-    raw = generate(args.format)
+    raw = generate(args.format, arc)
     if args.format == "thread":
         tweets = parse_thread(raw)
         if len(tweets) < 3:
@@ -209,7 +253,7 @@ def main():
     print("\n=== 投稿開始 ===")
     x_client = get_x_client()
     posted = post_thread(x_client, all_posts)
-    save(args.format, tweets[0], posted)
+    save(args.format, arc, tweets[0], posted)
     print(f"\n投稿完了: {len(posted)} tweets（うち最後の1件はURL専用リプ）")
 
 

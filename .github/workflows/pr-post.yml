@@ -1,12 +1,15 @@
-name: "アフィリエイトPR（バチェラーデート、火 21:00 JST）"
+name: "アフィリエイトPR（バチェラーデート、火・木・土 21:00 JST）"
 
 # BACHELOR_DATE_URL secret が未設定の場合は何もせず exit 0 で終了する設計。
 # 設定後は Settings → Secrets で BACHELOR_DATE_URL を追加すれば cron で動き出す。
+#
+# 物語アークは pr_post.py の auto モードが履歴を見て自動切替（next ↔ tried）。
+# 週3回 × auto 切替 = 各アーク週1.5回程度
 
 on:
   schedule:
-    # 火曜 21:00 JST = 12:00 UTC
-    - cron: '0 12 * * 2'
+    # 火・木・土 21:00 JST = 12:00 UTC
+    - cron: '0 12 * * 2,4,6'
   workflow_dispatch:
     inputs:
       format:
@@ -17,6 +20,15 @@ on:
         options:
           - thread
           - single
+      arc:
+        description: '物語アーク（auto は履歴で自動切替）'
+        required: false
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - next
+          - tried
       dry_run:
         description: 'dry-run（投稿しない）'
         required: false
@@ -50,12 +62,14 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             FMT="${{ github.event.inputs.format || 'thread' }}"
-            ARGS="--format $FMT"
+            ARC="${{ github.event.inputs.arc || 'auto' }}"
+            ARGS="--format $FMT --arc $ARC"
             if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
               ARGS="$ARGS --dry-run"
             fi
           else
-            ARGS="--format thread"
+            # cron 実行時は thread + arc=auto（履歴を見て next/tried 自動切替）
+            ARGS="--format thread --arc auto"
           fi
           echo "Running: python generator/pr_post.py $ARGS"
           python generator/pr_post.py $ARGS
