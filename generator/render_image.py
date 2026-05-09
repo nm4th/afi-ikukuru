@@ -117,6 +117,20 @@ strong {
     line-height: 1.2;
 }
 
+/* .rank-num や .tier-label の中に <strong> が入れ子になった場合、
+   重複した黄色背景＋色被りを防ぐ（外側のスタイルを継承させる）。
+   旧版で「黄色背景に白文字」になっていた事故の再発防止。*/
+.rank-num strong,
+.tier-label strong {
+    background: transparent !important;
+    color: inherit !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    font-size: inherit !important;
+    font-weight: inherit !important;
+    display: inline !important;
+}
+
 p, ul, li { font-size: 28px; line-height: 1.5; }
 ul { padding-left: 32px; }
 li { margin-bottom: 8px; }
