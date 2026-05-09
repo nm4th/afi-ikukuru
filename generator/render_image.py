@@ -56,22 +56,27 @@ html, body {
 .rank {
     display: flex;
     align-items: flex-start;
-    gap: 20px;
-    margin-bottom: 22px;
+    gap: 24px;
+    margin-bottom: 26px;
     font-size: 30px;
-    line-height: 1.45;
+    line-height: 1.5;
 }
 .rank-num {
     flex-shrink: 0;
     background: #ffd166;
     color: #1a1d21;
     font-weight: 900;
-    padding: 4px 16px;
-    border-radius: 6px;
-    min-width: 80px;
+    font-size: 36px;
+    padding: 8px 22px;
+    border-radius: 8px;
+    min-width: 130px;
     text-align: center;
+    letter-spacing: 0.08em;
+    line-height: 1.1;
+    /* MBTI4文字を読みやすくするため等幅系を優先 */
+    font-family: 'M PLUS Rounded 1c', 'Zen Kaku Gothic New', sans-serif;
 }
-.rank-body { color: #f5f1e8; }
+.rank-body { color: #f5f1e8; padding-top: 4px; }
 
 .tier-row {
     display: flex;
@@ -96,14 +101,34 @@ html, body {
 .tier-row .tier-label.c { color: #95a5a6; }
 .tier-types { font-size: 28px; line-height: 1.5; flex: 1; padding-top: 8px; color: #f5f1e8; }
 
+/* インラインのMBTI型名（<strong>INTJ</strong>）を読みやすく強調 */
 strong {
-    background: rgba(255, 209, 102, 0.18);
-    color: #fff5cc;
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-weight: 700;
-    font-size: 0.95em;
-    letter-spacing: 0.04em;
+    background: #ffd166;
+    color: #1a1d21;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-weight: 900;
+    font-size: 1em;
+    letter-spacing: 0.06em;
+    /* 等幅系で4文字MBTIをくっきり */
+    font-family: 'M PLUS Rounded 1c', 'Zen Kaku Gothic New', sans-serif;
+    /* インライン要素の上下にちょっと余白を取る */
+    display: inline-block;
+    line-height: 1.2;
+}
+
+/* .rank-num や .tier-label の中に <strong> が入れ子になった場合、
+   重複した黄色背景＋色被りを防ぐ（外側のスタイルを継承させる）。
+   旧版で「黄色背景に白文字」になっていた事故の再発防止。*/
+.rank-num strong,
+.tier-label strong {
+    background: transparent !important;
+    color: inherit !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    font-size: inherit !important;
+    font-weight: inherit !important;
+    display: inline !important;
 }
 
 p, ul, li { font-size: 28px; line-height: 1.5; }
