@@ -174,7 +174,11 @@ HTML_FRAME = """<!DOCTYPE html>
 
 
 def render_html_to_png(html_body: str, output_path: Path | str, width: int = 1080, height: int = 1350) -> Path:
-    """HTMLボディを受け取り、CSSテンプレートで囲んで PNG にレンダリング"""
+    """HTMLボディを受け取り、CSSテンプレートで囲んで PNG にレンダリング。
+
+    コンテンツが canvas 高さを超える場合は CSS transform: scale() で自動縮小して
+    収める（Tier表など内容多めの形式が画像に入りきらない事故を回避）。
+    """
     from playwright.sync_api import sync_playwright
 
     output_path = Path(output_path)
@@ -182,11 +186,42 @@ def render_html_to_png(html_body: str, output_path: Path | str, width: int = 108
 
     full_html = HTML_FRAME.format(css=CSS_TEMPLATE, body=html_body)
 
+    # signature 等の固定要素分の余白
+    SIGNATURE_RESERVE = 100
+
     with sync_playwright() as p:
         browser = p.chromium.launch()
         context = browser.new_context(viewport={"width": width, "height": height}, device_scale_factor=2)
         page = context.new_page()
         page.set_content(full_html, wait_until="networkidle")
+
+        # コンテンツがはみ出していたら scale 縮小
+        scale_info = page.evaluate(
+            """
+            (params) => {
+                const canvas = document.querySelector('.canvas');
+                if (!canvas) return { scale: 1.0, overflow: 0 };
+                const target = params.height - params.reserve;
+                const actual = canvas.scrollHeight;
+                if (actual > target) {
+                    const scale = target / actual;
+                    canvas.style.transform = `scale(${scale})`;
+                    canvas.style.transformOrigin = 'top left';
+                    // scale 後に幅が狭まるので拡大して埋める
+                    canvas.style.width = `${100 / scale}%`;
+                    return { scale: scale, overflow: actual - target, original: actual };
+                }
+                return { scale: 1.0, overflow: 0, original: actual };
+            }
+            """,
+            {"height": height, "reserve": SIGNATURE_RESERVE},
+        )
+        if scale_info.get("scale", 1.0) < 1.0:
+            print(
+                f"  画像オートフィット適用: scale={scale_info['scale']:.3f} "
+                f"(原コンテンツ高さ={scale_info['original']}px, はみ出し={scale_info['overflow']}px)"
+            )
+
         page.screenshot(path=str(output_path), full_page=False, omit_background=False)
         browser.close()
 
