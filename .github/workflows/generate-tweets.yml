@@ -3,8 +3,7 @@ name: ツイート生成・投稿
 on:
   schedule:
     - cron: '30 15 * * *'  # 00:30 JST - 生成
-    - cron: '30 22 * * *'  # 07:30 JST - 投稿
-    - cron: '0 0 * * *'    # 09:00 JST - 投稿
+    - cron: '0 17 * * *'   # 02:00 JST - 投稿（aruaru 深夜）
     - cron: '0 2 * * *'    # 11:00 JST - 投稿（aruaru）
     - cron: '15 3 * * *'   # 12:15 JST - 投稿
     - cron: '0 5 * * *'    # 14:00 JST - 投稿（aruaru）
@@ -16,6 +15,7 @@ on:
     - cron: '30 12 * * *'  # 21:30 JST - 投稿
     - cron: '30 13 * * *'  # 22:30 JST - 投稿
     - cron: '0 14 * * *'   # 23:00 JST - 投稿
+    - cron: '30 14 * * *'  # 23:30 JST - 投稿（mumble）
   workflow_dispatch:
 
 permissions:
@@ -79,14 +79,13 @@ jobs:
           \`\`\`
 
           ---
-          ⏰ 投稿スケジュール: 7:30 / 9:00 / 11:00 / 12:15 / 14:00 / 15:00 / 17:00 / 18:30 / 19:30 / 20:30 / 21:30 / 22:30 / 23:00（aruaru: 11:00 / 14:00 / 17:00）
+          ⏰ 投稿スケジュール: 02:00 / 11:00 / 12:15 / 14:00 / 15:00 / 17:00 / 18:30 / 19:30 / 20:30 / 21:30 / 22:30 / 23:00 / 23:30（aruaru: 02:00 / 11:00 / 14:00 / 17:00, mumble: 23:30）
           EOF
           )"
 
   post:
     if: |
-      github.event.schedule == '30 22 * * *' ||
-      github.event.schedule == '0 0 * * *'   ||
+      github.event.schedule == '0 17 * * *'  ||
       github.event.schedule == '0 2 * * *'   ||
       github.event.schedule == '15 3 * * *'  ||
       github.event.schedule == '0 5 * * *'   ||
@@ -97,7 +96,8 @@ jobs:
       github.event.schedule == '30 11 * * *' ||
       github.event.schedule == '30 12 * * *' ||
       github.event.schedule == '30 13 * * *' ||
-      github.event.schedule == '0 14 * * *'
+      github.event.schedule == '0 14 * * *'  ||
+      github.event.schedule == '30 14 * * *'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -118,8 +118,7 @@ jobs:
         run: |
           SCHEDULE="${{ github.event.schedule }}"
           case "$SCHEDULE" in
-            '30 22 * * *') SLOT="07:30" ;;
-            '0 0 * * *')   SLOT="09:00" ;;
+            '0 17 * * *')  SLOT="02:00" ;;
             '0 2 * * *')   SLOT="11:00" ;;
             '15 3 * * *')  SLOT="12:15" ;;
             '0 5 * * *')   SLOT="14:00" ;;
@@ -131,6 +130,7 @@ jobs:
             '30 12 * * *') SLOT="21:30" ;;
             '30 13 * * *') SLOT="22:30" ;;
             '0 14 * * *')  SLOT="23:00" ;;
+            '30 14 * * *') SLOT="23:30" ;;
             *) echo "Unknown schedule: $SCHEDULE"; exit 1 ;;
           esac
           echo "投稿スロット: $SLOT"
