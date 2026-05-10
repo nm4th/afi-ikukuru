@@ -314,9 +314,10 @@ def generate_mumble() -> str:
     return result
 
 
+# テーマ生成対象のスロット（12個）。mumble と異なり generate_themes() が
+# テーマ + 形式キーを出すスロット。時間順だが、02:00 は次の日の早朝に投稿。
 DAILY_SLOTS = [
-    ("07:30", "7:30 朝"),
-    ("09:00", "9:00 通勤後"),
+    ("02:00", "2:00 深夜 (aruaru)"),
     ("11:00", "11:00 午前 (aruaru)"),
     ("12:15", "12:15 昼"),
     ("14:00", "14:00 午後 (aruaru)"),
@@ -329,6 +330,9 @@ DAILY_SLOTS = [
     ("22:30", "22:30 夜4"),
     ("23:00", "23:00 深夜"),
 ]
+
+# Mumble スロット（テーマ不要、generate_mumble() で別途生成）
+MUMBLE_SLOT = ("23:30", "23:30 INTJ深夜つぶやき")
 
 
 def cmd_daily(output_json: str | None = None):
@@ -375,11 +379,20 @@ def cmd_daily(output_json: str | None = None):
             "reply": parsed["reply"],
         })
 
-        if i == n_slots - 1:
-            print(f"\n{'- '*30}")
-            print("【代替: INTJのつぶやき】\n")
-            mumble = generate_mumble()
-            print(mumble)
+    # mumble スロット（23:30 INTJ深夜つぶやき）を生成して tweets に追加
+    print(f"\n{'='*60}")
+    print(f"【{MUMBLE_SLOT[1]}】[mumble] 深夜のつぶやき")
+    print('='*60 + "\n")
+    time.sleep(6)
+    mumble_text = generate_mumble().strip()
+    print(mumble_text)
+    tweets.append({
+        "slot": MUMBLE_SLOT[0],
+        "theme": "深夜のつぶやき（中の人独白）",
+        "format": "mumble",
+        "main": mumble_text,
+        "reply": "",
+    })
 
     if output_json:
         Path(output_json).write_text(

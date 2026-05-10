@@ -31,7 +31,7 @@ import tweepy
 
 HISTORY_FILE = Path(__file__).parent.parent / "history" / "replied.jsonl"
 SEARCH_QUERIES = ["MBTI 恋愛", "INTJ 恋愛", "MBTI 相性", "INFJ 恋愛", "ENFP 恋愛"]
-MIN_LIKES = 200
+MIN_LIKES = 50
 MAX_LIKES = 10000  # 炎上回避
 MAX_HISTORY = 500
 RECENT_AUTHOR_DAYS = 14
@@ -98,8 +98,8 @@ def search_targets(client: tweepy.Client, queries: list[str]) -> tuple[list[dict
         print(f"  検索中: {q}")
         try:
             response = client.search_recent_tweets(
-                query=f"{q} -is:retweet -is:reply lang:ja min_faves:{MIN_LIKES}",
-                max_results=15,
+                query=f"{q} -is:retweet -is:reply lang:ja",
+                max_results=50,
                 tweet_fields=["public_metrics", "author_id", "created_at"],
                 user_auth=True,
             )
@@ -129,6 +129,8 @@ def search_targets(client: tweepy.Client, queries: list[str]) -> tuple[list[dict
             continue
         for t in response.data:
             m = t.public_metrics
+            if m["like_count"] < MIN_LIKES:
+                continue  # min_faves演算子代替: コード側でフィルタ
             all_tweets.append({
                 "id": str(t.id),
                 "text": t.text,

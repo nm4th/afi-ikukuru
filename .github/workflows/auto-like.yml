@@ -1,8 +1,7 @@
-name: フォロワーいいね
+name: フォロワーいいね（停止中・手動のみ）
 
+# 一旦停止（ユーザー指示）。試したい時だけ手動 dispatch。
 on:
-  schedule:
-    - cron: '15 * * * *'  # 毎時15分に実行
   workflow_dispatch:
     inputs:
       count:

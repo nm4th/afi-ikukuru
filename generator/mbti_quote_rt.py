@@ -21,7 +21,7 @@ import tweepy
 
 HISTORY_FILE = Path(__file__).parent.parent / "history" / "mbti_quoted.jsonl"
 SEARCH_QUERIES = ["MBTI 恋愛", "INTJ 恋愛", "MBTI 相性", "INFJ 恋愛"]
-MIN_LIKES = 300
+MIN_LIKES = 100
 MAX_HISTORY = 200
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -66,7 +66,7 @@ def save_quoted(tweet_id: str, tweet_text: str, comment: str):
 def search_tweets(client: tweepy.Client, query: str, max_results: int = 15) -> list[dict]:
     try:
         response = client.search_recent_tweets(
-            query=f"{query} -is:retweet -is:reply lang:ja min_faves:{MIN_LIKES}",
+            query=f"{query} -is:retweet -is:reply lang:ja",
             max_results=max_results,
             tweet_fields=["public_metrics", "created_at", "author_id"],
             user_auth=True,
@@ -87,6 +87,8 @@ def search_tweets(client: tweepy.Client, query: str, max_results: int = 15) -> l
     out = []
     for t in response.data:
         m = t.public_metrics
+        if m["like_count"] < MIN_LIKES:
+            continue  # min_faves演算子代替: コード側でフィルタ
         score = (
             m.get("impression_count", 0)
             + m["like_count"] * 100

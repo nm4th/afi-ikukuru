@@ -2,7 +2,7 @@
 """
 トレンドハイジャック（4時間ごと）
 
-直近4時間で min_faves:200 の MBTI/INTJ系ツイートを検出し、
+直近4〜8時間で MIN_LIKES 以上の MBTI/INTJ系ツイートを検出し、
 INTJ視点の独立した投稿（引用RTではなく、トピックに乗っかるオリジナル）を生成・投稿。
 
 1日の最大反応回数（DAILY_CAP）でスパム化を防ぐ。
@@ -22,7 +22,7 @@ import tweepy
 
 HISTORY_FILE = Path(__file__).parent.parent / "history" / "hijacked.jsonl"
 SEARCH_QUERIES = ["MBTI", "INTJ", "INFJ", "ENFP", "ISTJ"]
-MIN_LIKES = 500
+MIN_LIKES = 100  # min_faves演算子はpay-per-useで使えないので fetch 後にコードで filter
 DAILY_CAP = 2  # 1日最大2回反応
 RECENT_HOURS = 8  # 直近8時間のツイートのみ対象（cron に合わせて拡大）
 MAX_HISTORY = 500
@@ -83,8 +83,8 @@ def search_recent(client: tweepy.Client, queries: list[str]) -> list[dict]:
         print(f"  検索中: {q}")
         try:
             response = client.search_recent_tweets(
-                query=f"{q} -is:retweet -is:reply lang:ja min_faves:{MIN_LIKES}",
-                max_results=15,
+                query=f"{q} -is:retweet -is:reply lang:ja",
+                max_results=50,
                 tweet_fields=["public_metrics", "created_at", "author_id"],
                 start_time=cutoff.strftime("%Y-%m-%dT%H:%M:%SZ"),
                 user_auth=True,
@@ -103,6 +103,8 @@ def search_recent(client: tweepy.Client, queries: list[str]) -> list[dict]:
             continue
         for t in response.data:
             m = t.public_metrics
+            if m["like_count"] < MIN_LIKES:
+                continue  # min_faves演算子代替: コード側でフィルタ
             all_tweets.append({
                 "id": str(t.id),
                 "text": t.text,
