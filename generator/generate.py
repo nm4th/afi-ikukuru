@@ -222,11 +222,42 @@ def generate_themes() -> list[dict]:
 
 
 def parse_tease(raw: str) -> dict:
-    """tease形式の出力を本ツイートとリプライに分割"""
-    parts = re.split(r"【リプライ】", raw, maxsplit=1)
-    main_text = re.sub(r"^【本ツイート】\s*", "", parts[0]).strip()
-    reply_text = parts[1].strip() if len(parts) > 1 else ""
-    return {"main": main_text, "reply": reply_text}
+    """tease/compat/full16/metaphor 形式の出力を本ツイートとリプライに分割。
+
+    LLM が【リプライ】マーカーを省略するケースに備え、フォールバック分割も実装:
+    - 「↓」で終わる行 + 空行 + 後続コンテンツ → 後続を reply として救う
+    - 後続コンテンツが「N位 」「XXXX：」のような構造を持つ場合に限り採用
+    """
+    # 1) 明示マーカーで分割（変種も許容）
+    marker_re = re.compile(r"【\s*(?:リプライ|リプ|返信|Reply|reply)\s*】")
+    parts = marker_re.split(raw, maxsplit=1)
+    if len(parts) > 1:
+        main_text = re.sub(r"^【\s*本ツイート\s*】\s*", "", parts[0]).strip()
+        return {"main": main_text, "reply": parts[1].strip()}
+
+    # 2) フォールバック: 「↓」の後に明示マーカー無しで続いているケース
+    text = re.sub(r"^【\s*本ツイート\s*】\s*", "", raw).strip()
+    fallback = re.search(
+        # main: 文頭 から 末尾の「↓」を含む行末まで（greedy）
+        # その後: 改行 + 空行 + 任意の '---' 区切り + 空行
+        # reply: 「N位 」または「XXXX：」で始まるブロック
+        r"(?P<main>.+↓)[ \t]*\n[ \t]*\n+(?:[-]+[ \t]*\n+)?(?P<reply>(?:[1-9]位 |[A-Z]{4}[：:＝]).+)\Z",
+        text,
+        re.DOTALL,
+    )
+    if fallback:
+        # 正規表現が「↓ + 空行 + ランキング/MBTI:」を要求してるので、
+        # マッチした時点で構造的に reply とみなして良い。
+        return {
+            "main": fallback.group("main").strip(),
+            "reply": fallback.group("reply").strip(),
+        }
+
+    # 3) リプライなし（main 1ツイ完結扱い）
+    if "↓" in text:
+        # 「↓」があるのに reply が拾えなかった場合は警告ログ
+        print(f"  ⚠️ parse_tease: 「↓」検出したがリプライ抽出失敗。本ツイのみ投稿。raw末尾: ...{text[-200:]!r}")
+    return {"main": text, "reply": ""}
 
 
 def parse_single_tweet(raw: str) -> dict:
