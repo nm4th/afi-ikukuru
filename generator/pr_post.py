@@ -148,6 +148,21 @@ def ensure_pr_prefix(text: str) -> str:
     return f"{PR_PREFIX} {text}"
 
 
+def ensure_reply_pointer(text: str) -> str:
+    """最後の本文ツイートに「リンクはリプ欄に」誘導を必ず付与する。
+    Claude がプロンプト指示を忘れて誘導文を入れない事故への defense-in-depth。
+    """
+    # 既に十分な誘導があるか軽くチェック
+    has_pointer = (
+        ("リプ" in text or "返信" in text)
+        and ("↓" in text or "公式" in text or "リンク" in text)
+    )
+    if has_pointer:
+        return text
+    # 末尾に明示的な誘導を1行追加
+    return text.rstrip() + "\n\n↓ 公式リンクはリプ欄に貼ってます ↓"
+
+
 def substitute_url(text: str, url: str) -> str:
     return text.replace("{url}", url)
 
@@ -234,7 +249,11 @@ def main():
     # 2) 本文に紛れ込んだ {url} やURLは除去（プロンプトで禁止してるが念のため）
     tweets = [substitute_url(t, "").strip() for t in tweets]
 
-    # 3) URL専用リプ（広告本体、【PR】必須）を最後に追加
+    # 3) 最後の本文ツイに「リンクはリプに」誘導を強制付与
+    #    （プロンプトで指示してるが Claude が忘れることがある事故への defense-in-depth）
+    tweets[-1] = ensure_reply_pointer(tweets[-1])
+
+    # 4) URL専用リプ（広告本体、【PR】必須）を最後に追加
     url_reply = build_url_reply(affiliate_url)
     all_posts = tweets + [url_reply]
 
