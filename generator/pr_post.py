@@ -121,19 +121,15 @@ def save(fmt: str, arc: str, summary: str, posted_ids: list[str]):
 
 
 def generate(fmt: str, arc: str) -> str:
+    from generate import claude_call_with_retry  # rate-limit retry 内蔵
+
     history = load_recent_pr(arc=arc)
     prompt = PROMPTS[(fmt, arc)].format(history=history)
-    client = get_claude()
-    msg = client.messages.create(
-        model=MODEL,
-        max_tokens=2500,
+    return claude_call_with_retry(
+        prompt=prompt,
         system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    for block in msg.content:
-        if block.type == "text":
-            return block.text.strip()
-    return ""
+        max_tokens=2500,
+    ).strip()
 
 
 def parse_thread(raw: str) -> list[str]:
