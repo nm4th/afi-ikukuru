@@ -133,18 +133,44 @@ def save_history(category: str, text: str):
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
-def generate(prompt: str, max_tokens: int = 1500) -> str:
+def claude_call_with_retry(
+    prompt: str,
+    system: str = SYSTEM_PROMPT,
+    max_tokens: int = 1500,
+    max_retries: int = 5,
+) -> str:
+    """Anthropic API 呼び出しを 429 RateLimitError に対するバックオフ付きで実行。
+
+    レート制限（30K input tokens/分）に当たった時に指数バックオフで再試行。
+    他の HTTP エラー（401/500等）は再試行せずに即raise。
+    """
+    import time
     client = get_client()
-    message = client.messages.create(
-        model=MODEL,
-        max_tokens=max_tokens,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    for block in message.content:
-        if block.type == "text":
-            return block.text
-    return ""
+    last_err = None
+    for attempt in range(max_retries):
+        try:
+            message = client.messages.create(
+                model=MODEL,
+                max_tokens=max_tokens,
+                system=system,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            for block in message.content:
+                if block.type == "text":
+                    return block.text
+            return ""
+        except anthropic.RateLimitError as e:
+            last_err = e
+            wait = 30 * (attempt + 1)  # 30, 60, 90, 120, 150秒
+            print(f"  ⏸  Anthropic rate limit hit (attempt {attempt+1}/{max_retries}), waiting {wait}s...")
+            time.sleep(wait)
+    # 全リトライ失敗
+    raise RuntimeError(f"Anthropic rate limit persistent after {max_retries} retries: {last_err}")
+
+
+def generate(prompt: str, max_tokens: int = 1500) -> str:
+    """generate.py 内部用の薄いラッパ（後方互換）"""
+    return claude_call_with_retry(prompt, system=SYSTEM_PROMPT, max_tokens=max_tokens)
 
 
 def detect_format(line: str) -> str:
@@ -317,6 +343,7 @@ def cmd_daily(output_json: str | None = None):
 
     tweets = []
 
+    import time
     for i, ((slot, slot_label), entry) in enumerate(zip(DAILY_SLOTS, entries)):
         theme = entry["theme"]
         fmt = entry["format"]
@@ -325,6 +352,12 @@ def cmd_daily(output_json: str | None = None):
         print(f"\n{'='*60}")
         print(f"【{slot_label}】[{label}] {theme}")
         print('='*60 + "\n")
+
+        # 連続生成での Anthropic rate limit (30K input tokens/分) を回避するため、
+        # 各生成の間に短い sleep を挟む。13スロット × 平均3K input ≈ 40K tokens/min
+        # を回避できる。
+        if i > 0:
+            time.sleep(6)
 
         raw = generate_ranking(theme, fmt)
         print(raw)
