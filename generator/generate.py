@@ -52,6 +52,7 @@ from prompts import (
     RANKING_FULL16_PROMPT,
     RANKING_CONTRAST_PROMPT,
     RANKING_METAPHOR_PROMPT,
+    RANKING_ARUARU_PROMPT,
     TIER_PROMPT,
     DAILY_THEMES_PROMPT,
     INTJ_MUMBLE_PROMPT,
@@ -68,6 +69,7 @@ FORMAT_PROMPTS = {
     "full16": RANKING_FULL16_PROMPT,
     "contrast": RANKING_CONTRAST_PROMPT,
     "metaphor": RANKING_METAPHOR_PROMPT,
+    "aruaru": RANKING_ARUARU_PROMPT,
 }
 
 # tease構造（本ツイート + リプライ）で出力するフォーマット
@@ -81,6 +83,7 @@ FORMAT_LABELS = {
     "full16": "全16タイプ網羅",
     "contrast": "対比型",
     "metaphor": "比喩型",
+    "aruaru": "短文あるある",
 }
 
 _client: anthropic.Anthropic | None = None
@@ -159,7 +162,7 @@ def detect_format(line: str) -> str:
     bracket = re.search(r"\[([^\]]+)\]", line)
     if bracket:
         key = bracket.group(1).strip().lower()
-        for fmt in ("full16", "contrast", "metaphor", "compat"):
+        for fmt in ("full16", "contrast", "metaphor", "compat", "aruaru"):
             if fmt in key:
                 return fmt
 
@@ -174,6 +177,8 @@ def detect_format(line: str) -> str:
         return "compat"
     if "Tier表" in line:
         return "tier"
+    if "短文あるある" in line or "あるある" in line:
+        return "aruaru"
 
     # (3) テーマ本文の強い内容キーワード（汎用ラベルを上書きする）
     if "全16タイプ" in line or "16タイプ一覧" in line or "全タイプ" in line:
@@ -286,8 +291,11 @@ def generate_mumble() -> str:
 DAILY_SLOTS = [
     ("07:30", "7:30 朝"),
     ("09:00", "9:00 通勤後"),
+    ("11:00", "11:00 午前 (aruaru)"),
     ("12:15", "12:15 昼"),
+    ("14:00", "14:00 午後 (aruaru)"),
     ("15:00", "15:00 午後"),
+    ("17:00", "17:00 夕方 (aruaru)"),
     ("18:30", "18:30 夕"),
     ("19:30", "19:30 夜1"),
     ("20:30", "20:30 夜2"),
