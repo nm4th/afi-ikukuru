@@ -41,7 +41,7 @@ SEARCH_QUERIES = [
     "バチェロレッテ",
 ]
 
-MIN_LIKES = 50
+MIN_LIKES = 20
 
 ANALYSIS_PROMPT = """\
 あなたは「恋愛偏差値28のINTJ分析官」です。
@@ -101,7 +101,7 @@ def save_quoted(tweet_id: str, tweet_text: str, analysis: str):
 def search_tweets(client: tweepy.Client, query: str, max_results: int = 20) -> list[dict]:
     try:
         response = client.search_recent_tweets(
-            query=f"{query} -is:retweet -is:reply lang:ja min_faves:{MIN_LIKES}",
+            query=f"{query} -is:retweet -is:reply lang:ja",
             max_results=max_results,
             tweet_fields=["public_metrics", "created_at", "author_id"],
             user_auth=True,
@@ -127,6 +127,8 @@ def search_tweets(client: tweepy.Client, query: str, max_results: int = 20) -> l
     tweets = []
     for tweet in response.data:
         metrics = tweet.public_metrics
+        if metrics.get("like_count", 0) < MIN_LIKES:
+            continue  # min_faves演算子代替: コード側でフィルタ
         impressions = metrics.get("impression_count", 0)
         score = (
             impressions

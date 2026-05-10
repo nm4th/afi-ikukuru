@@ -28,7 +28,7 @@ SEARCH_QUERIES = [
     "ENFP 恋愛",
     "MBTI 相性",
 ]
-MIN_LIKES = 500
+MIN_LIKES = 200
 MAX_HISTORY = 50
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -44,10 +44,10 @@ def get_x_client() -> tweepy.Client:
     )
 
 
-def search_viral(client: tweepy.Client, query: str, max_results: int = 10) -> list:
+def search_viral(client: tweepy.Client, query: str, max_results: int = 50) -> list:
     try:
         response = client.search_recent_tweets(
-            query=f"{query} -is:retweet -is:reply lang:ja min_faves:{MIN_LIKES}",
+            query=f"{query} -is:retweet -is:reply lang:ja",
             max_results=max_results,
             tweet_fields=["public_metrics", "created_at"],
             user_auth=True,
@@ -62,7 +62,10 @@ def search_viral(client: tweepy.Client, query: str, max_results: int = 10) -> li
             raise SystemExit(0)
         print(f"  検索エラー HTTP {status}: {query} ({e})")
         return []
-    return list(response.data) if response.data else []
+    if not response.data:
+        return []
+    # min_faves演算子代替: コード側で MIN_LIKES 以上に絞る
+    return [t for t in response.data if t.public_metrics.get("like_count", 0) >= MIN_LIKES]
 
 
 def analyze(tweets_text: str) -> str:
