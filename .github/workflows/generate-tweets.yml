@@ -5,8 +5,11 @@ on:
     - cron: '30 15 * * *'  # 00:30 JST - 生成
     - cron: '30 22 * * *'  # 07:30 JST - 投稿
     - cron: '0 0 * * *'    # 09:00 JST - 投稿
+    - cron: '0 2 * * *'    # 11:00 JST - 投稿（aruaru）
     - cron: '15 3 * * *'   # 12:15 JST - 投稿
+    - cron: '0 5 * * *'    # 14:00 JST - 投稿（aruaru）
     - cron: '0 6 * * *'    # 15:00 JST - 投稿
+    - cron: '0 8 * * *'    # 17:00 JST - 投稿（aruaru）
     - cron: '30 9 * * *'   # 18:30 JST - 投稿
     - cron: '30 10 * * *'  # 19:30 JST - 投稿
     - cron: '30 11 * * *'  # 20:30 JST - 投稿
@@ -76,7 +79,7 @@ jobs:
           \`\`\`
 
           ---
-          ⏰ 投稿スケジュール: 7:30 / 9:00 / 12:15 / 15:00 / 18:30 / 19:30 / 20:30 / 21:30 / 22:30 / 23:00
+          ⏰ 投稿スケジュール: 7:30 / 9:00 / 11:00 / 12:15 / 14:00 / 15:00 / 17:00 / 18:30 / 19:30 / 20:30 / 21:30 / 22:30 / 23:00（aruaru: 11:00 / 14:00 / 17:00）
           EOF
           )"
 
@@ -84,8 +87,11 @@ jobs:
     if: |
       github.event.schedule == '30 22 * * *' ||
       github.event.schedule == '0 0 * * *'   ||
+      github.event.schedule == '0 2 * * *'   ||
       github.event.schedule == '15 3 * * *'  ||
+      github.event.schedule == '0 5 * * *'   ||
       github.event.schedule == '0 6 * * *'   ||
+      github.event.schedule == '0 8 * * *'   ||
       github.event.schedule == '30 9 * * *'  ||
       github.event.schedule == '30 10 * * *' ||
       github.event.schedule == '30 11 * * *' ||
@@ -114,8 +120,11 @@ jobs:
           case "$SCHEDULE" in
             '30 22 * * *') SLOT="07:30" ;;
             '0 0 * * *')   SLOT="09:00" ;;
+            '0 2 * * *')   SLOT="11:00" ;;
             '15 3 * * *')  SLOT="12:15" ;;
+            '0 5 * * *')   SLOT="14:00" ;;
             '0 6 * * *')   SLOT="15:00" ;;
+            '0 8 * * *')   SLOT="17:00" ;;
             '30 9 * * *')  SLOT="18:30" ;;
             '30 10 * * *') SLOT="19:30" ;;
             '30 11 * * *') SLOT="20:30" ;;
