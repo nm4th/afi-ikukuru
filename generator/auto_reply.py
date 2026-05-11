@@ -100,7 +100,7 @@ def search_targets(client: tweepy.Client, queries: list[str]) -> tuple[list[dict
             response = client.search_recent_tweets(
                 query=f"{q} -is:retweet -is:reply lang:ja",
                 max_results=50,
-                tweet_fields=["public_metrics", "author_id", "created_at"],
+                tweet_fields=["public_metrics", "author_id", "created_at", "reply_settings"],
                 user_auth=True,
             )
         except tweepy.TooManyRequests:
@@ -136,6 +136,7 @@ def search_targets(client: tweepy.Client, queries: list[str]) -> tuple[list[dict
                 "text": t.text,
                 "author_id": str(t.author_id) if t.author_id else "",
                 "metrics": m,
+                "reply_settings": getattr(t, "reply_settings", "everyone") or "everyone",
                 "score": m["like_count"] + m["retweet_count"] * 3,
                 "query": q,
             })
@@ -151,11 +152,24 @@ def search_targets(client: tweepy.Client, queries: list[str]) -> tuple[list[dict
     return unique, diag
 
 
-def pick_target(candidates: list[dict], replied_ids: set[str], author_last: dict[str, str]) -> tuple[dict | None, dict]:
-    """ターゲット選定 + 除外理由の集計を返す（診断用）"""
+def filter_targets(
+    candidates: list[dict],
+    replied_ids: set[str],
+    author_last: dict[str, str],
+    skip_ids: set[str] | None = None,
+) -> tuple[list[dict], dict]:
+    """フィルタを通った候補リストを返す（複数候補を試行できるよう list で返す）"""
     cutoff = datetime.now() - timedelta(days=RECENT_AUTHOR_DAYS)
-    rejected = {"already_replied": 0, "mega_viral": 0, "hostile": 0, "recent_author": 0}
+    rejected = {
+        "already_replied": 0, "mega_viral": 0, "hostile": 0,
+        "recent_author": 0, "reply_restricted": 0, "skip_in_run": 0,
+    }
+    skip_ids = skip_ids or set()
+    out = []
     for t in candidates:
+        if t["id"] in skip_ids:
+            rejected["skip_in_run"] += 1
+            continue
         if t["id"] in replied_ids:
             rejected["already_replied"] += 1
             continue
@@ -165,6 +179,10 @@ def pick_target(candidates: list[dict], replied_ids: set[str], author_last: dict
         if is_hostile(t["text"]):
             rejected["hostile"] += 1
             continue
+        # X のリプ制限（mentioned/following/verified のみ）は事前に除外
+        if t.get("reply_settings", "everyone") != "everyone":
+            rejected["reply_restricted"] += 1
+            continue
         last = author_last.get(t["author_id"], "")
         if last:
             try:
@@ -173,8 +191,14 @@ def pick_target(candidates: list[dict], replied_ids: set[str], author_last: dict
                     continue
             except (ValueError, TypeError):
                 pass
-        return t, rejected
-    return None, rejected
+        out.append(t)
+    return out, rejected
+
+
+def pick_target(candidates: list[dict], replied_ids: set[str], author_last: dict[str, str]) -> tuple[dict | None, dict]:
+    """後方互換: 最初の1件を返す（旧呼び出しコード対応）"""
+    eligible, rejected = filter_targets(candidates, replied_ids, author_last)
+    return (eligible[0] if eligible else None), rejected
 
 
 def generate_reply(target_text: str, context_replies: str = "(なし)") -> str:
@@ -231,42 +255,62 @@ def main():
         print(f"  HTTPエラー集計: {search_diag['errors']}")
     print(f"  候補（重複除外後）: {len(candidates)}件")
 
-    target, rejected = pick_target(candidates, replied_ids, author_last)
-    if not target:
-        print(f"\n  ⚠️ 適切なリプ対象が見つかりませんでした")
-        print(f"  除外内訳: {rejected}")
-        if not candidates and not search_diag["errors"]:
-            print(
-                f"  → 全クエリで0件・エラーなし。原因候補:\n"
-                f"     (1) min_faves={MIN_LIKES} が高すぎ、Niche のバズ閾値に届いていない\n"
-                f"     (2) 検索クエリが微妙\n"
-                f"     (3) 該当言語/期間にツイートが本当に無い"
-            )
-        elif search_diag["errors"]:
-            print(f"  → search_recent_tweets が HTTP エラーで失敗。X API 設定を要確認")
+    # 投稿時に 403（リプ制限など）が出たらこの run 内では再試行しない ID 集合
+    skip_in_run: set[str] = set()
+    MAX_ATTEMPTS = 5  # 候補が多くてもリプ生成コスト的に5回まで
+
+    for attempt in range(MAX_ATTEMPTS):
+        eligible, rejected = filter_targets(candidates, replied_ids, author_last, skip_in_run)
+        if attempt == 0:
+            print(f"  リプ可能候補: {len(eligible)}件")
+        if not eligible:
+            if attempt == 0:
+                print(f"\n  ⚠️ 適切なリプ対象が見つかりませんでした")
+                print(f"  除外内訳: {rejected}")
+                if not candidates and not search_diag["errors"]:
+                    print(
+                        f"  → 全クエリで0件・エラーなし。原因候補:\n"
+                        f"     (1) MIN_LIKES={MIN_LIKES} が高すぎ、Niche のバズ閾値に届いていない\n"
+                        f"     (2) 検索クエリが微妙\n"
+                        f"     (3) 該当言語/期間にツイートが本当に無い"
+                    )
+                elif search_diag["errors"]:
+                    print(f"  → search_recent_tweets が HTTP エラーで失敗。X API 設定を要確認")
+            else:
+                print(f"\n  ⚠️ {attempt}回試行したが、リプ可能な候補が尽きました")
+            return
+
+        target = eligible[0]
+        m = target["metrics"]
+        print(f"\n📌 リプ対象 (試行 {attempt+1}, 検索: {target['query']}):")
+        print(f"  {target['text'][:200]}")
+        print(f"  ❤️{m['like_count']} 🔁{m['retweet_count']} / reply_settings={target.get('reply_settings')}")
+
+        print(f"\n📝 リプ生成中...")
+        comment = generate_reply(target["text"])
+        print(f"\n{comment}")
+
+        if len(comment) > 200:
+            print(f"\n警告: コメントが {len(comment)} 字（180字推奨を超過）")
+
+        if args.dry_run:
+            print("\n[dry-run] リプはスキップ")
+            return
+
+        print(f"\n🚀 リプ投稿中...")
+        try:
+            rid = post_reply(x_client, comment, target["id"])
+        except tweepy.Forbidden as e:
+            print(f"  ⚠️ 403 Forbidden（投稿時のリプ制限など）: {e}")
+            print(f"     → このターゲットは skip して次の候補を試行")
+            skip_in_run.add(target["id"])
+            continue
+        print(f"  完了 (ID: {rid})")
+        save_reply(target["id"], target["author_id"], target["text"], comment)
+        print("  履歴に保存しました")
         return
 
-    m = target["metrics"]
-    print(f"\n📌 リプ対象 (検索: {target['query']}):")
-    print(f"  {target['text'][:200]}")
-    print(f"  ❤️{m['like_count']} 🔁{m['retweet_count']}")
-
-    print(f"\n📝 リプ生成中...")
-    comment = generate_reply(target["text"])
-    print(f"\n{comment}")
-
-    if len(comment) > 200:
-        print(f"\n警告: コメントが {len(comment)} 字（180字推奨を超過）")
-
-    if args.dry_run:
-        print("\n[dry-run] リプはスキップ")
-        return
-
-    print(f"\n🚀 リプ投稿中...")
-    rid = post_reply(x_client, comment, target["id"])
-    print(f"  完了 (ID: {rid})")
-    save_reply(target["id"], target["author_id"], target["text"], comment)
-    print("  履歴に保存しました")
+    print(f"\n  ⚠️ MAX_ATTEMPTS={MAX_ATTEMPTS} 回試行しても投稿できませんでした")
 
 
 if __name__ == "__main__":
