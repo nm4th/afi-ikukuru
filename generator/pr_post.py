@@ -3,11 +3,12 @@
 バチェラーデート アフィリエイトPR投稿（火・木・土 21:00 JST、週3回）
 
 物語アーク2種を交互に投稿:
-- arc="next"  : マチアプ8年失敗 → 「次これ試す」
-- arc="tried" : バチェラーデート使ってみた → INTJ自爆
+- arc="next"  : 過去詰まってた → 検証して辿り着いた
+- arc="tried" : 使ってみた検証レポート
 
-ステマ規制対応:
-- 先頭ツイ冒頭 + URL専用リプ冒頭 の両方に【PR】明記
+PR 表示の方針（engagement 優先で URL リプに集約）:
+- 本文ツイには【PR】を入れない（プロンプト指示 + strip_pr_prefix で二重除去）
+- URL 専用リプの冒頭に【PR】明記（広告本体に最も近い tweet に PR ラベル）
 - リンク先は BACHELOR_DATE_URL secret（直リンク）
 - URL は本文には絶対に含めず、最後に独立リプとして投稿
 
@@ -137,11 +138,15 @@ def parse_thread(raw: str) -> list[str]:
     return [p.strip() for p in parts if p.strip()]
 
 
-def ensure_pr_prefix(text: str) -> str:
-    """【PR】が無ければ冒頭に付与（ステマ規制対応の belt-and-suspenders）"""
-    if PR_PREFIX in text[:20]:
-        return text
-    return f"{PR_PREFIX} {text}"
+def strip_pr_prefix(text: str) -> str:
+    """ツイ1冒頭の【PR】を除去（engagement 優先運用のため）。
+    Claude がプロンプト指示通りに【PR】を入れてきた場合の defense-in-depth。
+    PR 表示は URL リプ側に集約する（build_url_reply 参照）。
+    """
+    stripped = text.lstrip()
+    if stripped.startswith(PR_PREFIX):
+        stripped = stripped[len(PR_PREFIX):].lstrip()
+    return stripped
 
 
 def ensure_reply_pointer(text: str) -> str:
@@ -239,8 +244,8 @@ def main():
     else:
         tweets = [raw]
 
-    # 1) 先頭ツイに【PR】を強制付与（プロンプト指示が漏れた場合の belt-and-suspenders）
-    tweets[0] = ensure_pr_prefix(tweets[0])
+    # 1) 先頭ツイの【PR】は engagement 優先で削除する（PR 表示は URL リプ側に集約）
+    tweets[0] = strip_pr_prefix(tweets[0])
 
     # 2) 本文に紛れ込んだ {url} やURLは除去（プロンプトで禁止してるが念のため）
     tweets = [substitute_url(t, "").strip() for t in tweets]
