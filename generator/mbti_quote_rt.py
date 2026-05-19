@@ -105,7 +105,7 @@ def search_tweets(client: tweepy.Client, query: str, max_results: int = 15) -> l
     return out
 
 
-def find_target(client: tweepy.Client, queries: list[str], quoted_ids: set[str]):
+def fetch_candidates(client: tweepy.Client, queries: list[str], quoted_ids: set[str]) -> list[dict]:
     all_tweets = []
     for q in queries:
         print(f"  検索中: {q}")
@@ -118,24 +118,13 @@ def find_target(client: tweepy.Client, queries: list[str], quoted_ids: set[str])
     seen = set()
     unique = []
     for t in all_tweets:
-        if t["id"] not in seen:
+        if t["id"] not in seen and t["id"] not in quoted_ids:
             seen.add(t["id"])
             unique.append(t)
 
     unique.sort(key=lambda t: t["score"], reverse=True)
-    print(f"\n  合計: {len(unique)}件（重複除外済み）")
-
-    target = None
-    for t in unique:
-        if t["id"] not in quoted_ids:
-            target = t
-            break
-
-    if not target:
-        return None, []
-
-    context = [t for t in unique if t["id"] != target["id"]][:5]
-    return target, context
+    print(f"\n  合計: {len(unique)}件（重複除外・既引用除外済み）")
+    return unique
 
 
 def generate_comment(target_text: str, context: list[dict]) -> str:
@@ -169,6 +158,9 @@ def post_quote_rt(client: tweepy.Client, comment: str, quote_tweet_id: str) -> s
     return str(response.data["id"])
 
 
+MAX_ATTEMPTS = 3  # 引用RT制限などで失敗した場合の次候補試行回数
+
+
 def main():
     parser = argparse.ArgumentParser(description="MBTI/INTJ 引用RT")
     parser.add_argument("--dry-run", action="store_true", help="投稿せず確認だけ")
@@ -189,31 +181,45 @@ def main():
     queries = [args.query] if args.query else SEARCH_QUERIES
 
     print("=== MBTI/INTJ 引用RT ===\n")
-    target, context = find_target(x_client, queries, quoted_ids)
+    candidates = fetch_candidates(x_client, queries, quoted_ids)
 
-    if not target:
+    if not candidates:
         print("引用対象のツイートが見つかりませんでした")
         return
 
-    m = target["metrics"]
-    print(f"\n📌 引用対象 (検索: {target['query']}):")
-    print(f"  {target['text'][:200]}")
-    print(f"  ❤️{m['like_count']} 🔁{m['retweet_count']} 💬{m['reply_count']}")
+    for attempt, target in enumerate(candidates[:MAX_ATTEMPTS], start=1):
+        context = [t for t in candidates if t["id"] != target["id"]][:5]
+        m = target["metrics"]
+        print(f"\n📌 引用対象 (試行 {attempt}/{MAX_ATTEMPTS}, 検索: {target['query']}):")
+        print(f"  {target['text'][:200]}")
+        print(f"  ❤️{m['like_count']} 🔁{m['retweet_count']} 💬{m['reply_count']}")
 
-    print(f"\n📝 INTJコメント生成中...")
-    comment = generate_comment(target["text"], context)
-    print(f"\n{comment}")
+        print(f"\n📝 INTJコメント生成中...")
+        comment = generate_comment(target["text"], context)
+        print(f"\n{comment}")
 
-    if args.dry_run:
-        print("\n[dry-run] 投稿はスキップしました")
+        if args.dry_run:
+            print("\n[dry-run] 投稿はスキップしました")
+            return
+
+        print(f"\n🚀 引用RT投稿中...")
+        try:
+            rt_id = post_quote_rt(x_client, comment, target["id"])
+        except tweepy.Forbidden as e:
+            body = ""
+            try:
+                body = getattr(e.response, "text", "")[:200]
+            except Exception:
+                pass
+            print(f"  ⚠️ 403 Forbidden（引用RT制限などで投稿不可）: {body}")
+            print(f"     → このターゲットは skip して次の候補を試行")
+            continue
+        print(f"  投稿完了 (ID: {rt_id})")
+        save_quoted(target["id"], target["text"], comment)
+        print("  履歴に保存しました")
         return
 
-    print(f"\n🚀 引用RT投稿中...")
-    rt_id = post_quote_rt(x_client, comment, target["id"])
-    print(f"  投稿完了 (ID: {rt_id})")
-
-    save_quoted(target["id"], target["text"], comment)
-    print("  履歴に保存しました")
+    print(f"\n  ⚠️ MAX_ATTEMPTS={MAX_ATTEMPTS} 回試行しても投稿できませんでした")
 
 
 if __name__ == "__main__":
