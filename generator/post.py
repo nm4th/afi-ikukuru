@@ -59,6 +59,11 @@ def post_tweet(
         response = client.create_tweet(**kwargs)
     except tweepy.HTTPException as e:
         status = getattr(getattr(e, "response", None), "status_code", "?")
+        body = ""
+        try:
+            body = getattr(e.response, "text", "")[:500]
+        except Exception:
+            pass
         if status == 402:
             print(
                 "\n!!! 402 Payment Required !!!\n"
@@ -67,6 +72,18 @@ def post_tweet(
                 "追加してください（月次キャップの設定も忘れずに）。\n"
                 f"詳細: {e}\n"
             )
+        elif status == 403:
+            print(
+                f"\n!!! 403 Forbidden !!!\n"
+                f"投稿が拒否されました。よくある原因:\n"
+                f"  - 重複投稿（X は直近の同一/類似テキストを自動で拒否）\n"
+                f"  - 投稿頻度制限（同じテキスト/URL を短時間に複数回）\n"
+                f"  - 規約違反/アカウント制限\n"
+                f"レスポンス本文: {body}\n"
+                f"投稿テキスト先頭: {text[:140]!r}\n"
+            )
+        else:
+            print(f"\nHTTP {status}: {body}\n")
         raise
 
     if response.data is None:
