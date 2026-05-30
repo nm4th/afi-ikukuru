@@ -1,9 +1,9 @@
 name: バズMBTIへのリプ（1日1回・21:00 JST）
 
 on:
-  schedule:
-    # 21:00 JST = 12:00 UTC（プライムタイムに1本だけ）
-    - cron: '0 12 * * *'
+  # [DISABLED 2026-05-30]   schedule:
+  #     # 21:00 JST = 12:00 UTC（プライムタイムに1本だけ）
+  #     - cron: '0 12 * * *'
   workflow_dispatch:
     inputs:
       dry_run:

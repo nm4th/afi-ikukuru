@@ -1,9 +1,9 @@
 name: トレンドハイジャック（8時間ごと）
 
 on:
-  schedule:
-    # 8時間ごと: 09:00 / 17:00 / 01:00 JST = 00 / 08 / 16 UTC
-    - cron: '0 0,8,16 * * *'
+  # [DISABLED 2026-05-30]   schedule:
+  #     # 8時間ごと: 09:00 / 17:00 / 01:00 JST = 00 / 08 / 16 UTC
+  #     - cron: '0 0,8,16 * * *'
   workflow_dispatch:
     inputs:
       dry_run:

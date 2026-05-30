@@ -7,9 +7,9 @@ name: "アフィリエイトPR（バチェラーデート、火・木・土 21:0
 # 週3回 × auto 切替 = 各アーク週1.5回程度
 
 on:
-  schedule:
-    # 火・木・土 21:00 JST = 12:00 UTC
-    - cron: '0 12 * * 2,4,6'
+  # [DISABLED 2026-05-30]   schedule:
+  #     # 火・木・土 21:00 JST = 12:00 UTC
+  #     - cron: '0 12 * * 2,4,6'
   workflow_dispatch:
     inputs:
       format:

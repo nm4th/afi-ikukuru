@@ -1,9 +1,9 @@
 name: MBTI/INTJ 引用RT（火・金 21:00 JST）
 
 on:
-  schedule:
-    # 火曜・金曜 21:00 JST = 12:00 UTC
-    - cron: '0 12 * * 2,5'
+  # [DISABLED 2026-05-30]   schedule:
+  #     # 火曜・金曜 21:00 JST = 12:00 UTC
+  #     - cron: '0 12 * * 2,5'
   workflow_dispatch:
     inputs:
       query:

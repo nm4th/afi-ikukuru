@@ -1,9 +1,9 @@
 name: 月初のマチアプ収支報告（毎月1日 21:00 JST）
 
 on:
-  schedule:
-    # 毎月1日 21:00 JST = 12:00 UTC
-    - cron: '0 12 1 * *'
+  # [DISABLED 2026-05-30]   schedule:
+  #     # 毎月1日 21:00 JST = 12:00 UTC
+  #     - cron: '0 12 1 * *'
   workflow_dispatch:
     inputs:
       dry_run:
