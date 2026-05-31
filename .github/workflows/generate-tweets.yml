@@ -24,7 +24,8 @@ permissions:
 
 jobs:
   generate:
-    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '30 15 * * *'
+    # [DISABLED 2026-05-30] 全機能一時停止中（元: workflow_dispatch or 30 15 schedule）
+    if: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -84,20 +85,8 @@ jobs:
           )"
 
   post:
-    if: |
-      github.event.schedule == '0 17 * * *'  ||
-      github.event.schedule == '0 2 * * *'   ||
-      github.event.schedule == '15 3 * * *'  ||
-      github.event.schedule == '0 5 * * *'   ||
-      github.event.schedule == '0 6 * * *'   ||
-      github.event.schedule == '0 8 * * *'   ||
-      github.event.schedule == '30 9 * * *'  ||
-      github.event.schedule == '30 10 * * *' ||
-      github.event.schedule == '30 11 * * *' ||
-      github.event.schedule == '30 12 * * *' ||
-      github.event.schedule == '30 13 * * *' ||
-      github.event.schedule == '0 14 * * *'  ||
-      github.event.schedule == '30 14 * * *'
+    # [DISABLED 2026-05-30] 全機能一時停止中（元: 13個の cron schedule のいずれかにマッチ）
+    if: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
