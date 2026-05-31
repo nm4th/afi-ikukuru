@@ -22,6 +22,7 @@ permissions:
 
 jobs:
   like:
+    if: false  # [DISABLED 2026-05-30] 全機能一時停止中
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

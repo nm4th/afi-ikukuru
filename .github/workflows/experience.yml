@@ -1,9 +1,9 @@
 name: 体験談スレッド（隔日・奇数日 22:00 JST）
 
 on:
-  schedule:
-    # 22:00 JST = 13:00 UTC、毎日トリガーするが奇数日のみ実行（experience.py 内で判定）
-    - cron: '0 13 * * *'
+  # [DISABLED 2026-05-30]   schedule:
+  #     # 22:00 JST = 13:00 UTC、毎日トリガーするが奇数日のみ実行（experience.py 内で判定）
+  #     - cron: '0 13 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
@@ -28,6 +28,7 @@ permissions:
 
 jobs:
   experience:
+    if: false  # [DISABLED 2026-05-30] 全機能一時停止中
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

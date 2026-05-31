@@ -1,9 +1,9 @@
 name: MBTI/INTJ 引用RT（火・金 21:00 JST）
 
 on:
-  schedule:
-    # 火曜・金曜 21:00 JST = 12:00 UTC
-    - cron: '0 12 * * 2,5'
+  # [DISABLED 2026-05-30]   schedule:
+  #     # 火曜・金曜 21:00 JST = 12:00 UTC
+  #     - cron: '0 12 * * 2,5'
   workflow_dispatch:
     inputs:
       query:
@@ -23,6 +23,7 @@ permissions:
 
 jobs:
   quote-rt:
+    if: false  # [DISABLED 2026-05-30] 全機能一時停止中
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

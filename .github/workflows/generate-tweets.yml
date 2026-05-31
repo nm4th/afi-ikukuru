@@ -1,21 +1,21 @@
 name: ツイート生成・投稿
 
 on:
-  schedule:
-    - cron: '30 15 * * *'  # 00:30 JST - 生成
-    - cron: '0 17 * * *'   # 02:00 JST - 投稿（aruaru 深夜）
-    - cron: '0 2 * * *'    # 11:00 JST - 投稿（aruaru）
-    - cron: '15 3 * * *'   # 12:15 JST - 投稿
-    - cron: '0 5 * * *'    # 14:00 JST - 投稿（aruaru）
-    - cron: '0 6 * * *'    # 15:00 JST - 投稿
-    - cron: '0 8 * * *'    # 17:00 JST - 投稿（aruaru）
-    - cron: '30 9 * * *'   # 18:30 JST - 投稿
-    - cron: '30 10 * * *'  # 19:30 JST - 投稿
-    - cron: '30 11 * * *'  # 20:30 JST - 投稿
-    - cron: '30 12 * * *'  # 21:30 JST - 投稿
-    - cron: '30 13 * * *'  # 22:30 JST - 投稿
-    - cron: '0 14 * * *'   # 23:00 JST - 投稿
-    - cron: '30 14 * * *'  # 23:30 JST - 投稿（mumble）
+  # [DISABLED 2026-05-30]   schedule:
+  #     - cron: '30 15 * * *'  # 00:30 JST - 生成
+  #     - cron: '0 17 * * *'   # 02:00 JST - 投稿（aruaru 深夜）
+  #     - cron: '0 2 * * *'    # 11:00 JST - 投稿（aruaru）
+  #     - cron: '15 3 * * *'   # 12:15 JST - 投稿
+  #     - cron: '0 5 * * *'    # 14:00 JST - 投稿（aruaru）
+  #     - cron: '0 6 * * *'    # 15:00 JST - 投稿
+  #     - cron: '0 8 * * *'    # 17:00 JST - 投稿（aruaru）
+  #     - cron: '30 9 * * *'   # 18:30 JST - 投稿
+  #     - cron: '30 10 * * *'  # 19:30 JST - 投稿
+  #     - cron: '30 11 * * *'  # 20:30 JST - 投稿
+  #     - cron: '30 12 * * *'  # 21:30 JST - 投稿
+  #     - cron: '30 13 * * *'  # 22:30 JST - 投稿
+  #     - cron: '0 14 * * *'   # 23:00 JST - 投稿
+  #     - cron: '30 14 * * *'  # 23:30 JST - 投稿（mumble）
   workflow_dispatch:
 
 permissions:
@@ -24,7 +24,8 @@ permissions:
 
 jobs:
   generate:
-    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '30 15 * * *'
+    # [DISABLED 2026-05-30] 全機能一時停止中（元: workflow_dispatch or 30 15 schedule）
+    if: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -84,20 +85,8 @@ jobs:
           )"
 
   post:
-    if: |
-      github.event.schedule == '0 17 * * *'  ||
-      github.event.schedule == '0 2 * * *'   ||
-      github.event.schedule == '15 3 * * *'  ||
-      github.event.schedule == '0 5 * * *'   ||
-      github.event.schedule == '0 6 * * *'   ||
-      github.event.schedule == '0 8 * * *'   ||
-      github.event.schedule == '30 9 * * *'  ||
-      github.event.schedule == '30 10 * * *' ||
-      github.event.schedule == '30 11 * * *' ||
-      github.event.schedule == '30 12 * * *' ||
-      github.event.schedule == '30 13 * * *' ||
-      github.event.schedule == '0 14 * * *'  ||
-      github.event.schedule == '30 14 * * *'
+    # [DISABLED 2026-05-30] 全機能一時停止中（元: 13個の cron schedule のいずれかにマッチ）
+    if: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

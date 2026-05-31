@@ -1,9 +1,9 @@
 name: バズツイート研究（週次・MBTI/INTJ）
 
 on:
-  schedule:
-    # 日曜 12:00 JST = 03:00 UTC
-    - cron: '0 3 * * 0'
+  # [DISABLED 2026-05-30]   schedule:
+  #     # 日曜 12:00 JST = 03:00 UTC
+  #     - cron: '0 3 * * 0'
   workflow_dispatch:
     inputs:
       dry_run:
@@ -20,6 +20,7 @@ permissions:
 
 jobs:
   research:
+    if: false  # [DISABLED 2026-05-30] 全機能一時停止中
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
